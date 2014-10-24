@@ -34,7 +34,7 @@ public class DataImpl implements Data {
 	// Los bloques de datos se parten cuando se pasan de cierto tamaño.
 
 	public DataImpl(String filePath) throws Exception {
-		file = BlockFile.createOrRead(filePath, headerSize, magic);
+		file = BlockFile.open(filePath, headerSize, blockSize, magic, true);
 		String type = file.getHeader().getString("format_type");
 		byte[] bs = file.getHeader().get("format");
 		format = BlockFormat.getFormat(type, bs);
@@ -53,11 +53,7 @@ public class DataImpl implements Data {
 	public void addData(BlockData data) throws Exception {
 		byte[] k = format.getKey(data);
 		long pos = dataIndex.getBlockPosition(k);
-		Block b = null;
-		if (pos > 0)
-			b = file.getBlock(pos);
-		else
-			b = new Block(blockSize);
+		Block b = file.getBlock(pos, true);
 
 		DataPayload dataPayload = new DataPayload().fromByteArray(b.payload());
 
@@ -67,26 +63,19 @@ public class DataImpl implements Data {
 			Range orig = dataPayload.range();
 			DataPayload splitted = dataPayload.split();
 			if (splitted != null) {
-				long splittedPos = file.append(new Block(blockSize, splitted
-						.toByteArray()));
+				Block halfBlock = file.newBlock(splitted.toByteArray());
 				dataIndex.splitRange(orig, dataPayload.range(),
-						splitted.range(), splittedPos);
+						splitted.range(),
+						DataTypeUtils.longToByteArray(halfBlock.getPos()));
 			}
 
 		}
-		if (pos < 0) {
-			long writePos = file.writeBlock(pos, new Block(blockSize,
-					dataPayload.toByteArray()));
-			dataIndex.put(k, writePos);
-		} else {
-			long writePos = file.append(new Block(blockSize, dataPayload
-					.toByteArray()));
-			dataIndex.put(k, writePos);
-		}
+		Block writtenBlock = file.newBlock(dataPayload.toByteArray());
+		dataIndex.put(k, DataTypeUtils.longToByteArray(writtenBlock.getPos()));
 	}
 
-	public Iterator<Block> iterator(byte[] from, byte[] to) {
-		Iterator<Long> pos = dataIndex.iterator(new Range(from, to));
-		return file.iterate(pos);
-	}
+	// public Iterator<Block> iterator(byte[] from, byte[] to) {
+	// Iterator<Long> pos = dataIndex.iterator(new Range(from, to));
+	// return file.iterator(pos);
+	// }
 }

@@ -10,4 +10,6 @@ public interface FormatType<T> {
 
 	byte[] getData(int offset, byte[] d);
 
+	byte[] toBytes(Object object);
+
 }

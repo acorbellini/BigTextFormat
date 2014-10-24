@@ -9,14 +9,14 @@ import edu.bigtextformat.block.BlockFormat;
 import edu.bigtextformat.header.Header;
 import edu.jlime.util.DataTypeUtils;
 
-public class BplusIndex implements Index {
+public class BplusIndex implements Index, Iterable<IndexData> {
 
-	private static long magic = DataTypeUtils.byteArrayToLong(new byte[] { 0xf,
-			0xa, 0xc, 0xa, 0x1, 0x2, 0x3, 0x4 });
+	private static long magic = DataTypeUtils.byteArrayToLong("BPLUSIDX"
+			.getBytes());
 
 	private static int headerSize = 128;
 
-	private static final int DEFAULT_INDEX_SIZE = 3;
+	private static final int DEFAULT_INDEX_SIZE = 4;
 
 	private static final int DEFAULT_INDEX_BLOCK_SIZE = 128;
 
@@ -34,23 +34,36 @@ public class BplusIndex implements Index {
 
 	public BplusIndex(String string, BlockFormat format) throws Exception {
 		this.format = format;
-		this.file = BlockFile.createOrRead(string, headerSize, magic);
+		this.file = BlockFile.open(string, headerSize, indexBlockSize, magic,
+				true);
 		this.h = file.getHeader();
+		byte[] rootAddrAsBytes = h.get("root");
 
-		byte[] root = h.get("root");
-
-		if (root == null) {
-			long rootPos = DataTypeUtils.byteArrayToLong(root);
-			this.root = new IndexData(file, format, indexBlockSize,
-					maxIndexSize, rootPos, -1, 0).fromByteArray(file.getBlock(
-					rootPos).payload());
+		if (rootAddrAsBytes != null) {
+			long rootPos = DataTypeUtils.byteArrayToLong(rootAddrAsBytes);
+			this.root = IndexData.read(this, file.getBlock(rootPos, false));
+		} else if (!file.isEmpty()) {
+			throw new Exception("Can't find root pointer in header.");
 		} else {
-			Block b = new Block(indexBlockSize);
-			long pos = file.append(b);
-			this.root = new IndexData(file, format, indexBlockSize,
-					maxIndexSize, pos, -1, 0);
-
+			Block b = file.newEmptyBlock();
+			this.root = createRoot(b);
+			this.root.persist();
+			h.putData("root", DataTypeUtils.longToByteArray(b.getPos()));
 		}
+	}
+
+	private IndexData createRoot(Block b) throws Exception {
+		return createIndexData(b, -1, 0);
+		// long rootPos = this.root.getBlock().getPos();
+		// IndexData left = createIndexData(file.newEmptyBlock(), rootPos, 0);
+		// IndexData right = createIndexData(file.newEmptyBlock(), rootPos, 0);
+		// left.setNext(right.getBlock().getPos());
+		// right.setPrev(left.getBlock().getPos());
+	}
+
+	private IndexData createIndexData(Block b, long parent, int level)
+			throws Exception {
+		return IndexData.create(this, b, parent, level);
 	}
 
 	// Index deleted; -> Tal vez no sea necesario, si es que el indice no es muy
@@ -65,57 +78,105 @@ public class BplusIndex implements Index {
 	@Override
 	public long getBlockPosition(byte[] k) throws Exception {
 		IndexData data = findBlock(k);
-		return data.pos();
+		return data.getBlock().getPos();
 	}
 
 	@Override
-	public void put(byte[] key, long value) throws Exception {
-
-		insert(key, value, -1);
+	public void put(byte[] key, byte[] value) throws Exception {
+		IndexData data = findBlock(key);
+		insert(data, key, value, null);
 	}
 
-	private void insert(byte[] k, long vLeft, long vRight) throws Exception {
-		IndexData data = findBlock(k);
-		data.put(k, vLeft, vRight);
+	private void insert(IndexData data, byte[] k, byte[] value, byte[] vRight)
+			throws Exception {
+
+		data.put(k, value, vRight);
 
 		if (data.size() > maxIndexSize) {
 			IndexData split = data.split();
 
 			byte[] sendItUp = split.last();
+			IndexData parent;
+			if (data.parent == -1) {
+				this.root = IndexData.create(this, file.newEmptyBlock(), -1,
+						data.level + 1);
+				root.persist();
+				h.putData("root",
+						DataTypeUtils.longToByteArray(root.getBlock().getPos()));
 
-			// file.writeBlock(data.pos(),
-			// new Block(indexBlockSize, data.toByteArray()));
-			// file.append(new Block(indexBlockSize, split.toByteArray()));
+				data.parent = root.getBlock().getPos();
+				split.parent = root.getBlock().getPos();
 
-			insert(sendItUp, split.pos(), data.pos());
+				parent = root;
+			} else {
+				parent = getIndexData(data.parent);
+			}
+
+			split.persist(); // need a block pos
+			
+			split.setNext(data.getNext());			
+			split.setPrev(data.getBlock().getPos());
+			
+			data.setNext(split.getBlock().getPos());
+			
+
+			split.persist(); // final persist
+			data.persist();// final persist
+
+			insert(parent, sendItUp,
+					DataTypeUtils.longToByteArray(split.getBlock().getPos()),
+					DataTypeUtils.longToByteArray(data.getBlock().getPos()));
 		}
+		data.persist();
+	}
+
+	private IndexData getIndexData(long pos) throws Exception {
+		return IndexData.read(this, file.getBlock(pos, false));
 	}
 
 	private IndexData findBlock(byte[] key) throws Exception {
 		IndexData current = root;
 		while (current.level() != 0) {
-			Long son = current.getSon(key);
-			if (son > 0) {
-				Block block = file.getBlock(son);
-				current = new IndexData(file, format, indexBlockSize,
-						maxIndexSize, son, current.pos, current.level + 1)
-						.fromByteArray(block.payload());
-			} else {
-				Block b = new Block(indexBlockSize);
-				long pos = file.append(b);
-				return new IndexData(file, format, indexBlockSize,
-						maxIndexSize, pos, current.pos, current.level + 1);
-			}
+			Long son = DataTypeUtils.byteArrayToLong(current.getSon(key));
+			Block block = file.getBlock(son, false);
+			current = IndexData.read(this, block);
 		}
 		return current;
 	}
 
 	@Override
-	public void splitRange(Range orig, Range left, Range right, long leftPos)
+	public void splitRange(Range orig, Range left, Range right, byte[] leftPos)
 			throws Exception {
-		IndexData data = findBlock(right.getLast());
-		data.removeBelow(right.getFirst());
-		insert(left.getLast(), leftPos, -1);
+		// IndexData data = findBlock(right.getLast());
+		// data.removeBelow(right.getFirst());
+		// insert(left.getLast(), leftPos, null);
+	}
+
+	@Override
+	public byte[] get(byte[] k) throws Exception {
+		return findBlock(k).get(k);
+	}
+
+	public int getIndexSize() {
+		return maxIndexSize;
+	}
+
+	public BlockFormat getFormat() {
+		return format;
+	}
+
+	@Override
+	public Iterator<IndexData> iterator() {
+		return new BplusIndexIterator(this);
+	}
+
+	public IndexData getFirstData() throws Exception {
+		IndexData cur = root;
+		while (cur.level != 0) {
+			long pos = DataTypeUtils.byteArrayToLong(root.getFirstSon());
+			cur = getIndexData(pos);
+		}
+		return cur;
 	}
 
 }

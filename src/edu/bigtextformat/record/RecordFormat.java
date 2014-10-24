@@ -1,7 +1,11 @@
 package edu.bigtextformat.record;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import edu.bigtextformat.block.BlockFormat;
 import edu.bigtextformat.data.BlockData;
@@ -59,7 +63,7 @@ public class RecordFormat extends BlockFormat implements DataType<RecordFormat> 
 	private byte[] getData(String k, byte[] d) {
 		int offset = 0;
 		for (int i = 0; i < header.size(); i++) {
-			if (header.get(i).equals(k)) {
+			if (!header.get(i).equals(k)) {
 				offset += formats.get(i).size(offset, d);
 			} else {
 				return formats.get(i).getData(offset, d);
@@ -75,7 +79,7 @@ public class RecordFormat extends BlockFormat implements DataType<RecordFormat> 
 		buff.putStringList(header);
 		buff.putStringList(key);
 		buff.putInt(formats.size());
-		for (FormatType formatType : formats) {
+		for (FormatType<?> formatType : formats) {
 			buff.putString(formatType.toString());
 		}
 		return buff.build();
@@ -107,5 +111,27 @@ public class RecordFormat extends BlockFormat implements DataType<RecordFormat> 
 			formats.add(getFormat(k));
 		}
 		return formats;
+	}
+
+	public static RecordFormat create(String[] types,
+			FormatType<?>[] formatTypes, String[] k) {
+		return new RecordFormat(Arrays.asList(types),
+				Arrays.asList(formatTypes), Arrays.asList(k));
+	}
+
+	public Record newRecord() {
+		return new Record(this);
+	}
+
+	public int size() {
+		return header.size();
+	}
+
+	public int getPos(String k) {
+		return header.indexOf(k);
+	}
+
+	public FormatType<?> getFormat(int i) {
+		return formats.get(i);
 	}
 }

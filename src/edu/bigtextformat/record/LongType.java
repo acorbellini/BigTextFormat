@@ -26,4 +26,12 @@ public class LongType implements FormatType<Long> {
 		return new ByteBuffer(k).getLong();
 	}
 
+	@Override
+	public byte[] toBytes(Object object) {
+		Long i = (Long) object;
+		ByteBuffer b = new ByteBuffer(4);
+		b.putLong(i);
+		return b.build();
+	}
+
 }

@@ -28,4 +28,12 @@ public class DateType implements FormatType<Date> {
 		return new Date(new ByteBuffer(k).getLong());
 	}
 
+	@Override
+	public byte[] toBytes(Object object) {
+		Date d = (Date) object;
+		ByteBuffer buff = new ByteBuffer();
+		buff.putLong(d.getTime());
+		return buff.build();
+	}
+
 }

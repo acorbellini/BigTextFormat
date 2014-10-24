@@ -37,4 +37,12 @@ public class ByteArrayType implements FormatType<byte[]> {
 		return k;
 	}
 
+	@Override
+	public byte[] toBytes(Object object) {
+		byte[] el = (byte[]) object;
+		ByteBuffer buff = new ByteBuffer();
+		buff.putByteArray(el);
+		return buff.build();
+	}
+
 }

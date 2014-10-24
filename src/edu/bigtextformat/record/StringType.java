@@ -29,4 +29,12 @@ public class StringType implements FormatType<String> {
 		return new String(k);
 	}
 
+	@Override
+	public byte[] toBytes(Object object) {
+		String s = (String) object;
+		ByteBuffer buff = new ByteBuffer();
+		buff.putString(s);
+		return buff.build();
+	}
+
 }

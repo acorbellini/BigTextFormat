@@ -1,10 +1,14 @@
 package edu.bigtextformat.record;
 
+import edu.jlime.util.ByteBuffer;
+
 public class IntegerType implements FormatType<Integer> {
 
 	@Override
 	public int compare(byte[] k1, byte[] k2) {
-		return 0;
+		Integer i1 = new ByteBuffer(k1).getInt();
+		Integer i2 = new ByteBuffer(k2).getInt();
+		return i1.compareTo(i2);
 	}
 
 	@Override
@@ -14,14 +18,20 @@ public class IntegerType implements FormatType<Integer> {
 
 	@Override
 	public byte[] getData(int offset, byte[] d) {
-		// TODO Auto-generated method stub
-		return null;
+		return new ByteBuffer(d, offset).get(4);
 	}
 
 	@Override
 	public Integer get(byte[] k) {
-		// TODO Auto-generated method stub
-		return null;
+		return new ByteBuffer(k).getInt();
+	}
+
+	@Override
+	public byte[] toBytes(Object object) {
+		Integer i = (Integer) object;
+		ByteBuffer b = new ByteBuffer(4);
+		b.putInt(i);
+		return b.build();
 	}
 
 }

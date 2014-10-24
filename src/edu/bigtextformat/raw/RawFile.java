@@ -1,8 +1,11 @@
 package edu.bigtextformat.raw;
 
+import java.io.Closeable;
+import java.io.IOException;
+
 import edu.jlime.util.DataTypeUtils;
 
-public abstract class RawFile {
+public abstract class RawFile implements Closeable {
 
 	public static RawFile getChannelRawFile(String path, boolean memoryMapped)
 			throws Exception {
@@ -33,5 +36,9 @@ public abstract class RawFile {
 
 	public abstract void read(long pos, byte[] data, int offset, int size)
 			throws Exception;
+
+	public abstract void sync() throws IOException;
+
+	public abstract void read(long pos, byte[] data) throws Exception;
 
 }
