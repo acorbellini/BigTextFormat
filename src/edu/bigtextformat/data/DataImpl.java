@@ -1,13 +1,13 @@
 package edu.bigtextformat.data;
 
 import java.util.Arrays;
-import java.util.Iterator;
 
 import edu.bigtextformat.Data;
 import edu.bigtextformat.Range;
 import edu.bigtextformat.block.Block;
 import edu.bigtextformat.block.BlockFile;
 import edu.bigtextformat.block.BlockFormat;
+import edu.bigtextformat.block.BlockFormats;
 import edu.bigtextformat.index.BplusIndex;
 import edu.bigtextformat.index.Index;
 import edu.bigtextformat.record.FormatType;
@@ -26,28 +26,33 @@ public class DataImpl implements Data {
 	private int blockSize = DEFAULT_BLOCK_SIZE;
 	private int maxBlockSize = DEFAULT_MAX_BLOCK_SIZE;
 	private int headerSize = 128;
-	private static long magic = DataTypeUtils.byteArrayToLong(new byte[] { 0xf,
-			0xa, 0xc, 0xa, 0x1, 0x2, 0x3, 0x4 });
+	private static long magic = DataTypeUtils.byteArrayToLong("DATAFILE"
+			.getBytes());
 
 	private BlockFormat format;
 
 	// Los bloques de datos se parten cuando se pasan de cierto tamaño.
 
 	public DataImpl(String filePath) throws Exception {
-		file = BlockFile.open(filePath, headerSize, blockSize, magic, true);
+		file = BlockFile.open(filePath, headerSize, blockSize, magic, true,
+				false, false);
+
 		String type = file.getHeader().getString("format_type");
+
 		byte[] bs = file.getHeader().get("format");
-		format = BlockFormat.getFormat(type, bs);
+
+		format = BlockFormat.getFormat(BlockFormats.valueOf(type), bs);
 
 		BlockFormat indexformat = format.getKeyFormat();
 
-		dataIndex = new BplusIndex(filePath + ".i", indexformat);
+		dataIndex = new BplusIndex(filePath + ".i", indexformat, false, true);
 
 		deleted = new BplusIndex(filePath + ".del",
 				new RecordFormat(Arrays.asList(new String[] { "recordpos" }),
 						Arrays.asList(new FormatType<?>[] { FormatTypes.LONG
-								.getType() }),
-						Arrays.asList(new String[] { "recordpos" })));
+								.getType() }), Arrays
+								.asList(new String[] { "recordpos" })), false,
+				true);
 	}
 
 	public void addData(BlockData data) throws Exception {
@@ -71,7 +76,8 @@ public class DataImpl implements Data {
 
 		}
 		Block writtenBlock = file.newBlock(dataPayload.toByteArray());
-		dataIndex.put(k, DataTypeUtils.longToByteArray(writtenBlock.getPos()));
+		dataIndex.put(k, DataTypeUtils.longToByteArray(writtenBlock.getPos()),
+				false);
 	}
 
 	// public Iterator<Block> iterator(byte[] from, byte[] to) {

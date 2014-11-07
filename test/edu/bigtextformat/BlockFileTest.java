@@ -28,7 +28,7 @@ public class BlockFileTest {
 	private void test() throws Exception {
 		long magic = DataTypeUtils.byteArrayToLong("ABLKFILE".getBytes());
 		final BlockFile file = BlockFile.open("blocktest.b", 100, 16, magic,
-				true);
+				true, true, true);
 
 		String[] test = new String[] { "Chorioactis is a genus of fungus that contains the single species Chorioactis geaster, an extremely rare mushroom found only  "
 				+ "in select locales in Texas and Japan. In the former, it is commonly known as the devil's cigar or the Texas star in Japan it is called kirinomitake. It is notable for its unusual appearance. "
@@ -73,7 +73,7 @@ public class BlockFileTest {
 			// b1.setPayload("Hola! que tal? como va? todo bien?".getBytes());
 		} else {
 			System.out.println("Is not empty");
-			
+
 			for (Block b : file) {
 				if (b.isDeleted())
 					System.out.print("DELETED : ");

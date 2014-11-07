@@ -1,8 +1,5 @@
 package edu.bigtextformat;
 
-import java.util.Iterator;
-
-import edu.bigtextformat.block.Block;
 import edu.bigtextformat.data.BlockData;
 
 public interface Data {

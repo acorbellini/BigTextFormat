@@ -2,44 +2,26 @@ package edu.bigtextformat.block;
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.io.OutputStream;
+import java.util.ArrayList;
 import java.util.Iterator;
-import java.util.WeakHashMap;
+import java.util.List;
+import java.util.Map.Entry;
+import java.util.TreeMap;
+
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 
 import edu.bigtextformat.header.Header;
 import edu.bigtextformat.raw.RawFile;
 import edu.jlime.util.DataTypeUtils;
 
 public class BlockFile implements Closeable, Iterable<Block> {
-	private static class BlockFileIterator implements Iterator<Block> {
-		Block current = null;
-		private BlockFile file;
 
-		public BlockFileIterator(BlockFile file) throws Exception {
-			this.file = file;
-		}
+	boolean reuseDeleted;
 
-		@Override
-		public Block next() {
-			return current;
-		}
+	TreeMap<Integer, List<Long>> deleted = new TreeMap<>();
 
-		@Override
-		public boolean hasNext() {
-			try {
-				// do {
-				if (current == null)
-					current = file.getFirstBlock();
-				else
-					current = file.getBlock(current.getNextBlockPos(), false);
-				// } while (current.isDeleted());
-				return true;
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
-			return false;
-		}
-	}
+	private List<BlockPosChangeListener> blockPosChangeListeners = new ArrayList<>();
 
 	long magic;
 	RawFile file;
@@ -48,7 +30,11 @@ public class BlockFile implements Closeable, Iterable<Block> {
 	long currentPos = 0;
 	boolean compressed = false;
 
-	private static WeakHashMap<Long, Block> blocks = new WeakHashMap<>();
+	// private static WeakHashMap<Block, Boolean> current = new WeakHashMap<>();
+	//
+	// private static WeakHashMap<Long, Block> blocks = new WeakHashMap<>();
+	Cache<Long, Block> blocks = CacheBuilder.newBuilder().maximumSize(100)
+			.<Long, Block> build();
 
 	private BlockFile(RawFile file) {
 		this.file = file;
@@ -73,10 +59,10 @@ public class BlockFile implements Closeable, Iterable<Block> {
 	}
 
 	private Block getBlock(long pos, int size, boolean create) throws Exception {
-		Block res = blocks.get(pos);
+		Block res = blocks.getIfPresent(pos);
 		if (res == null) {
 			synchronized (blocks) {
-				res = blocks.get(pos);
+				res = blocks.getIfPresent(pos);
 				if (res == null) {
 					if (pos > 0 && currentPos > pos) {
 						res = Block.read(this, pos);
@@ -96,8 +82,9 @@ public class BlockFile implements Closeable, Iterable<Block> {
 	}
 
 	public static BlockFile open(String path, int headerSize, int minSize,
-			long magic, boolean compressed) throws Exception {
-		RawFile file = RawFile.getChannelRawFile(path, false);
+			long magic, boolean compressed, boolean trunc, boolean write)
+			throws Exception {
+		RawFile file = RawFile.getChannelRawFile(path, trunc, write);
 
 		BlockFile ret = new BlockFile(file);
 		ret.setCompressed(compressed);
@@ -113,6 +100,7 @@ public class BlockFile implements Closeable, Iterable<Block> {
 		}
 		Block headerBlock = ret.getBlock(8l, headerSize, true);
 		headerBlock.setFixed(true);
+		// headerBlock.setMemoryMapped(true);
 		ret.header = Header.open(headerBlock);
 		ret.minSize = minSize;
 		return ret;
@@ -122,10 +110,17 @@ public class BlockFile implements Closeable, Iterable<Block> {
 		return newBlock(null, minSize);
 	}
 
-	public synchronized long reserve(int max) {
-		long res = currentPos;
-		currentPos += max;
-		return res;
+	public long reserve(int max) {
+		synchronized (blocks) {
+			Entry<Integer, List<Long>> e = deleted.ceilingEntry(max);
+			if (e == null || e.getValue().isEmpty()) {
+				long res = currentPos;
+				currentPos += max;
+				return res;
+			} else {
+				return e.getValue().remove(0);
+			}
+		}
 	}
 
 	public Block newBlock(byte[] bytes) throws Exception {
@@ -149,7 +144,7 @@ public class BlockFile implements Closeable, Iterable<Block> {
 	}
 
 	public boolean isEmpty() throws Exception {
-		return length() == 8l + header.size();
+		return length() == getFirstBlockPos();
 	}
 
 	@Override
@@ -163,16 +158,50 @@ public class BlockFile implements Closeable, Iterable<Block> {
 	}
 
 	protected Block getFirstBlock() throws Exception {
-		return getBlock(8l + header.size(), false);
+		return getBlock(getFirstBlockPos(), false);
 	}
 
-	public void removeBlock(long pos) {
+	public long getFirstBlockPos() {
+		return 8l + header.size();
+	}
+
+	public void removeBlock(long pos, int size, byte status) throws Exception {
 		synchronized (blocks) {
-			blocks.remove(pos);
+			Block.setDeleted(file, status, pos);
+			blocks.invalidate(pos);
+			List<Long> l = deleted.get(size);
+			if (l == null) {
+				l = new ArrayList<>();
+				deleted.put(size, l);
+			}
+			l.add(pos);
 		}
 	}
 
-	public RawFile getFile() {
+	public RawFile getRawFile() {
 		return file;
 	}
+
+	public void addPosListener(BlockPosChangeListener l) {
+		blockPosChangeListeners.add(l);
+	}
+
+	void notifyPosChanged(Block b, long oldPos) throws Exception {
+		for (BlockPosChangeListener block : blockPosChangeListeners) {
+			block.changedPosition(b, oldPos);
+		}
+	}
+
+	public void removePosListener(BlockPosChangeListener l) {
+		blockPosChangeListeners.remove(l);
+	}
+
+	public long size() throws Exception {
+		return file.length();
+	}
+
+	public void delete() throws IOException {
+		file.delete();
+	}
+
 }

@@ -1,14 +1,14 @@
 package edu.bigtextformat.record;
 
 import edu.jlime.util.ByteBuffer;
+import edu.jlime.util.DataTypeUtils;
 
 public class IntegerType implements FormatType<Integer> {
 
 	@Override
-	public int compare(byte[] k1, byte[] k2) {
-		Integer i1 = new ByteBuffer(k1).getInt();
-		Integer i2 = new ByteBuffer(k2).getInt();
-		return i1.compareTo(i2);
+	public int compare(byte[] k1, int offset1, byte[] k2, int offset2) {
+		return Integer.compare(DataTypeUtils.byteArrayToInt(k1, offset1),
+				DataTypeUtils.byteArrayToInt(k2, offset2));
 	}
 
 	@Override

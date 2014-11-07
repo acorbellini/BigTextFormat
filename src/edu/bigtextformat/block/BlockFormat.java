@@ -1,8 +1,12 @@
 package edu.bigtextformat.block;
 
-import edu.bigtextformat.data.BlockData;
+import java.util.Comparator;
 
-public abstract class BlockFormat {
+import edu.bigtextformat.data.BlockData;
+import edu.bigtextformat.record.DataType;
+
+public abstract class BlockFormat implements Comparator<byte[]>,
+		DataType<BlockFormat> {
 
 	public abstract BlockFormat getKeyFormat();
 
@@ -10,9 +14,13 @@ public abstract class BlockFormat {
 
 	public abstract int compare(byte[] d1, byte[] d2);
 
-	public static BlockFormat getFormat(String type, byte[] bs)
+	public static BlockFormat getFormat(BlockFormats f, byte[] bs)
 			throws Exception {
-		BlockFormats f = BlockFormats.valueOf(type);
+		// BlockFormats f = BlockFormats.valueOf(type);
 		return f.fromByteArray(bs);
 	}
+
+	public abstract String print(byte[] bs);
+
+	public abstract BlockFormats getType();
 }

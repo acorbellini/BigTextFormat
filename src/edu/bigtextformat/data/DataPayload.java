@@ -3,10 +3,15 @@ package edu.bigtextformat.data;
 import java.util.ArrayList;
 
 import edu.bigtextformat.Range;
+import edu.bigtextformat.block.Block;
 import edu.bigtextformat.record.DataType;
 import edu.jlime.util.ByteBuffer;
 
 public class DataPayload implements DataType<DataPayload> {
+
+	Block b;
+
+	int level = 0;
 
 	private static final int LENGTH_FIELD_SIZE = 4;
 
@@ -26,9 +31,8 @@ public class DataPayload implements DataType<DataPayload> {
 	@Override
 	public byte[] toByteArray() {
 		ByteBuffer buff = new ByteBuffer();
-		for (byte[] bs : records) {
+		for (byte[] bs : records)
 			buff.putByteArray(bs);
-		}
 		return buff.build();
 	}
 
@@ -68,5 +72,10 @@ public class DataPayload implements DataType<DataPayload> {
 
 	public Range range() {
 		return new Range(first(), last());
+	}
+
+	public static DataPayload open(Block b2) {
+		// TODO Auto-generated method stub
+		return null;
 	}
 }

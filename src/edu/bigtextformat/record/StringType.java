@@ -5,7 +5,7 @@ import edu.jlime.util.ByteBuffer;
 public class StringType implements FormatType<String> {
 
 	@Override
-	public int compare(byte[] k1, byte[] k2) {
+	public int compare(byte[] k1, int offset1, byte[] k2, int offset2) {
 		String s = new String(k1);
 		String s2 = new String(k2);
 		return s.compareTo(s2);

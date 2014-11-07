@@ -5,7 +5,7 @@ import edu.jlime.util.ByteBuffer;
 public class ByteArrayType implements FormatType<byte[]> {
 
 	@Override
-	public int compare(byte[] k1, byte[] k2) {
+	public int compare(byte[] k1, int offset1, byte[] k2, int offset2) {
 		if (k1.length > k2.length)
 			return 1;
 		else if (k1.length < k2.length)

@@ -7,7 +7,7 @@ import edu.jlime.util.ByteBuffer;
 public class DateType implements FormatType<Date> {
 
 	@Override
-	public int compare(byte[] k1, byte[] k2) {
+	public int compare(byte[] k1, int offset1, byte[] k2, int offset2) {
 		Long l1 = new ByteBuffer(k1).getLong();
 		Long l2 = new ByteBuffer(k2).getLong();
 		return l1.compareTo(l2);

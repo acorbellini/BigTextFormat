@@ -16,12 +16,14 @@ public class BplusIndexIterator implements Iterator<IndexData> {
 	public boolean hasNext() {
 
 		try {
-			if (data == null)
+			if (data == null){
 				data = i.getFirstData();
-			else if (data.getNext() != -1)
-				data = IndexData
-						.read(i, i.file.getBlock(data.getNext(), false));
-			return true;
+				return true;
+			}else if (data.getNext() != -1) {
+				data =i.getIndexData(data.getNext());
+				return true;
+			}
+			
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
@@ -31,6 +33,12 @@ public class BplusIndexIterator implements Iterator<IndexData> {
 	@Override
 	public IndexData next() {
 		return data;
+	}
+
+	@Override
+	public void remove() {
+		// TODO Auto-generated method stub
+		
 	}
 
 }
