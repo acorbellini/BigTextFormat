@@ -58,7 +58,9 @@ public class Block implements DataType<Block> {
 	}
 
 	private void updateMaxSize(int length) {
-		if (length > maxPayloadSize) {
+		if (fixed && pos == -1) {
+			maxPayloadSize = length;
+		} else if (length > maxPayloadSize) {
 			maxPayloadSize = (int) (length * 2);
 		}
 	}

@@ -57,12 +57,12 @@ public class LevelFile {
 		if (maxKey == null || opts.format.compare(maxKey, lastKey) < 0)
 			maxKey = lastKey;
 
-		Block b = file.newBlock(table.toByteArray());
+		Block b = file.newFixedBlock(table.toByteArray());
 		index.put(table.lastKey(), b.getPos(), opts.format);
 	}
 
 	public void commit() throws Exception {
-		file.newBlock(index.toByteArray());
+		file.newFixedBlock(index.toByteArray());
 		file.close();
 		commited = true;
 	}
@@ -122,6 +122,11 @@ public class LevelFile {
 	}
 
 	public void moveTo(int i, int cont) throws Exception {
+		try {
+			file.close();
+		} catch (Exception e1) {
+			e1.printStackTrace();
+		}
 		File curr = file.getRawFile().getFile();
 		String newPath = SortedLevelFile.getPath(dir, level + 1, cont);
 		try {
@@ -132,7 +137,7 @@ public class LevelFile {
 		}
 		path = newPath;
 		file = openBlockFile(newPath, false);
-		level = level + 1;
+		level = i;
 		this.cont = cont;
 	}
 

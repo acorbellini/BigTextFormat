@@ -67,7 +67,7 @@ public class BlockFile implements Closeable, Iterable<Block> {
 					if (pos > 0 && currentPos > pos) {
 						res = Block.read(this, pos);
 					} else if (create) {
-						res = newBlock(new byte[] {}, size);
+						res = newBlock(new byte[] {}, size, false);
 					} else
 						throw new Exception("Block does not exist");
 					blocks.put(pos, res);
@@ -107,7 +107,7 @@ public class BlockFile implements Closeable, Iterable<Block> {
 	}
 
 	public Block newEmptyBlock() throws Exception {
-		return newBlock(null, minSize);
+		return newBlock(null, minSize, false);
 	}
 
 	public long reserve(int max) {
@@ -124,11 +124,13 @@ public class BlockFile implements Closeable, Iterable<Block> {
 	}
 
 	public Block newBlock(byte[] bytes) throws Exception {
-		return newBlock(bytes, minSize);
+		return newBlock(bytes, minSize, false);
 	}
 
-	private Block newBlock(byte[] bytes, int size) throws Exception {
+	private Block newBlock(byte[] bytes, int size, boolean fixed)
+			throws Exception {
 		Block b = Block.create(this, size);
+		b.setFixed(fixed);
 		b.setCompressed(compressed);
 		if (bytes != null)
 			b.setPayload(bytes);
@@ -202,6 +204,10 @@ public class BlockFile implements Closeable, Iterable<Block> {
 
 	public void delete() throws IOException {
 		file.delete();
+	}
+
+	public Block newFixedBlock(byte[] byteArray) throws Exception {
+		return newBlock(byteArray, minSize, true);
 	}
 
 }

@@ -9,6 +9,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import edu.bigtextformat.block.BlockFormat;
 import edu.bigtextformat.levels.levelfile.LevelFile;
+import edu.bigtextformat.levels.levelfile.LevelFileWriter;
 
 public class SortedLevelFile {
 	AtomicInteger count = new AtomicInteger(0);
@@ -47,17 +48,17 @@ public class SortedLevelFile {
 					}
 			}
 		}
-		// Integer cont = getLastLevelIndex(0);
-		// LevelFile level = LevelFile.newFile(getCwd().getPath(), opts, 0,
-		// cont);
-		CompactWriter levelwriter = new CompactWriter(this, 0);
+		Integer cont = getLastLevelIndex(0);
+		LevelFile level = LevelFile.newFile(getCwd().getPath(), opts, 0, cont);
+		LevelFileWriter lwriter = level.getWriter();
+		// CompactWriter levelwriter = new CompactWriter(this, 0);
 		List<byte[]> keys = dataBlock.getKeys();
 		List<byte[]> values = dataBlock.getValues();
 		for (int i = 0; i < keys.size(); i++)
-			levelwriter.add(keys.get(i), values.get(i));
-		levelwriter.persist();
-		// level.commitAndPersist();
-		// addLevel(level);
+			lwriter.add(keys.get(i), values.get(i));
+		lwriter.close();
+		level.commitAndPersist();
+		addLevel(level);
 	}
 
 	public static String getPath(String dir, int level, int cont) {

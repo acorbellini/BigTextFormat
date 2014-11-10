@@ -9,7 +9,11 @@ import java.util.List;
 import edu.bigtextformat.block.Block;
 import edu.bigtextformat.block.BlockFormat;
 import edu.bigtextformat.record.DataType;
+import edu.bigtextformat.record.FormatType;
+import edu.bigtextformat.record.FormatTypes;
+import edu.bigtextformat.record.RecordFormat;
 import edu.jlime.util.ByteBuffer;
+import edu.jlime.util.DataTypeUtils;
 
 public class Memtable {
 
@@ -35,7 +39,29 @@ public class Memtable {
 		// while (cont < keys.size() && format.compare(k, keys.get(cont)) >
 		// 0)
 		// cont++;
-		int cont = Collections.binarySearch(keys, k, format);
+		// int cont = Collections.binarySearch(keys, k, format);
+		int cont = 0;
+		boolean found = false;
+		int lo = 0;
+		int hi = keys.size() - 1;
+		while (lo <= hi && !found) {
+			// Key is in a[lo..hi] or not present.
+			int mid = lo + (hi - lo) / 2;
+			int comp = format.compare(k, keys.get(mid));
+			if (comp < 0) {
+				cont = lo;
+				hi = mid - 1;
+			} else if (comp > 0) {
+				lo = mid + 1;
+				cont = lo;
+			} else {
+				found = true;
+				cont = mid;
+			}
+			// get(mid);
+		}
+		// if (!found)
+		// cont = -cont - 1;
 		if (cont < 0)
 			cont = -(cont + 1);
 		keys.add(cont, k);
@@ -152,5 +178,26 @@ public class Memtable {
 		keys.clear();
 		values.clear();
 		size = 0;
+	}
+
+	public static void main(String[] args) {
+		Memtable table = new Memtable();
+		List<Integer> toAdd = Arrays.asList(new Integer[] { 4, 5, 6, 1, 3, 0,
+				2, 14, 56, 23 });
+
+		BlockFormat format = RecordFormat.create(new String[] { "nada" },
+				new FormatType[] { FormatTypes.INTEGER.getType() },
+				new String[] { "nada" });
+
+		for (Integer integer : toAdd) {
+			System.out.println(table.print(format));
+			System.err.println("insert " + integer);
+			table.insertOrdered(DataTypeUtils.intToByteArray(integer),
+					new byte[] {}, format);
+		}
+		System.out.println(table.print(format));
+		// for (byte[] integer : table.keys) {
+		// System.out.println(DataTypeUtils.byteArrayToInt(integer));
+		// }
 	}
 }

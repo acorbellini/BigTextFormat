@@ -59,19 +59,29 @@ public class LevelTest {
 				PATH,
 				new LevelOptions().setFormat(format).setMaxMemTablesWriting(2)
 						.setMemTableSize(2 * 1024 * 1024)
-						.setBaseSize(512 * 1024).setMaxLevel0Files(10)
+						.setBaseSize(2 * 1024 * 1024).setMaxLevel0Files(10)
 						.setCompactLevel0Threshold(5).setMaxLevelFiles(10)
-						.setMaxBlockSize(64 * 1024));
+						.setMaxBlockSize(256 * 1024));
 
 		toAdd.shuffle(new Random(System.currentTimeMillis()));
 
 		long init = System.currentTimeMillis();
 		TIntIterator it = toAdd.iterator();
+		int rawSize = 0;
+		int cont = 0;
 		while (it.hasNext()) {
-			file.put(format.newRecord().set("k", it.next())
+			if (cont++ % 10000 == 0)
+				System.out.println("Inserted " + cont);
+			byte[] byteArray = format.newRecord().set("k", it.next())
 			// .set("k2", -i)
-					.toByteArray(), "Hola!".getBytes());
+					.toByteArray();
+			byte[] bytes = "Hola!".getBytes();
+			file.put(byteArray, bytes);
+
+			rawSize += byteArray.length + bytes.length;
 		}
+		System.out.println("Raw Size " + rawSize);
+
 		System.out.println(System.currentTimeMillis() - init);
 
 		System.out.println("Compacting...");
@@ -84,7 +94,7 @@ public class LevelTest {
 
 		init = System.currentTimeMillis();
 
-		// toAdd.sort();
+		toAdd.sort();
 
 		it = toAdd.iterator();
 		while (it.hasNext()) {
