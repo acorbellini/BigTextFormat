@@ -18,14 +18,10 @@ final class Level0Writer extends Thread {
 	@Override
 	public void run() {
 		while (!sortedFile.closed) {
-			DataBlock table = sortedFile.getNextMemtable();
-			if (table != null) {
-				try {
-					sortedFile.writeLevel0(table, false);
-				} catch (Exception e) {
-					e.printStackTrace();
-				}
-				sortedFile.removeMemtable(table);
+			try {
+				sortedFile.writeNextMemtable();
+			} catch (Exception e) {
+				e.printStackTrace();
 			}
 		}
 	}

@@ -1,25 +1,21 @@
 package edu.bigtextformat.levels;
 
 import java.io.File;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map.Entry;
-import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import edu.bigtextformat.block.BlockFormat;
 import edu.bigtextformat.levels.levelfile.LevelFile;
-import edu.bigtextformat.levels.levelfile.LevelFileWriter;
 
 public class SortedLevelFile {
 	AtomicInteger count = new AtomicInteger(0);
-	private volatile DataBlock memTable;
+	private volatile Memtable memTable;
 	HashMap<Integer, List<LevelFile>> levels = new HashMap<>();
 	private LevelOptions opts;
-	List<DataBlock> writing = new ArrayList<>();
+	List<Memtable> writing = new ArrayList<>();
 	private File cwd;
 	volatile boolean closed;
 	private Level0Writer writer;
@@ -30,16 +26,18 @@ public class SortedLevelFile {
 	private SortedLevelFile(File cwd, LevelOptions opt) {
 		this.opts = opt;
 		this.cwd = cwd;
-		memTable = new DataBlock();
+		memTable = new Memtable();
 		writer = new Level0Writer(this);
 		compactor = new Compactor(this);
 	}
 
-	protected void writeLevel0(DataBlock table, boolean flush) throws Exception {
+	protected void writeLevel0(Memtable dataBlock, boolean flush)
+			throws Exception {
 		List<LevelFile> level0 = levels.get(0);
 		if (level0 != null) {
 			synchronized (level0) {
-				while (level0.size() >= opts.maxLevel0Files && !flush)
+				while (level0.size() >= opts.maxLevel0Files && !flush
+						&& !closed)
 					try {
 						level0.wait();
 					} catch (InterruptedException e) {
@@ -47,16 +45,17 @@ public class SortedLevelFile {
 					}
 			}
 		}
-		Integer cont = getLastLevelIndex(0);
-		LevelFile level = LevelFile.newFile(getCwd().getPath(), opts, 0, cont);
-		LevelFileWriter levelwriter = level.getWriter();
-		List<byte[]> keys = table.getKeys();
-		List<byte[]> values = table.getValues();
+		// Integer cont = getLastLevelIndex(0);
+		// LevelFile level = LevelFile.newFile(getCwd().getPath(), opts, 0,
+		// cont);
+		CompactWriter levelwriter = new CompactWriter(this, 0);
+		List<byte[]> keys = dataBlock.getKeys();
+		List<byte[]> values = dataBlock.getValues();
 		for (int i = 0; i < keys.size(); i++)
 			levelwriter.add(keys.get(i), values.get(i));
-		levelwriter.close();
-		level.commitAndPersist();
-		addLevel(level);
+		levelwriter.persist();
+		// level.commitAndPersist();
+		// addLevel(level);
 	}
 
 	public static String getPath(String dir, int level, int cont) {
@@ -86,6 +85,12 @@ public class SortedLevelFile {
 			if (level.getLevel() == 0)
 				list.notify();
 		}
+
+		if (level.getLevel() == 0 && list.size() > 0
+				&& (list.size() == opts.compactLevel0Threshold + 1))
+			compactor.setChanged();
+		else if (list.size() == opts.maxLevelFiles + 1)
+			compactor.setChanged();
 
 	}
 
@@ -126,7 +131,7 @@ public class SortedLevelFile {
 					e.printStackTrace();
 				}
 		}
-		memTable = new DataBlock();
+		memTable = new Memtable();
 	}
 
 	public boolean exists(byte[] k) {
@@ -170,6 +175,11 @@ public class SortedLevelFile {
 
 		writeMemtable(true);
 
+		List<LevelFile> level0 = getLevel(0);
+		synchronized (level0) {
+			level0.notifyAll();
+		}
+
 		flushWriting();
 
 		compactor.waitFinished();
@@ -200,14 +210,20 @@ public class SortedLevelFile {
 
 	public List<LevelFile> getLevelFile(byte[] minKey, byte[] maxKey, int l) {
 		List<LevelFile> found = new ArrayList<>();
-		List<LevelFile> list = levels.get(l);
+		List<LevelFile> list = null;
+		synchronized (levels) {
+			list = levels.get(l);
+		}
 		if (list != null) {
-			for (LevelFile levelFile : list) {
-				if (opts.format.compare(levelFile.getMinKey(), maxKey) > 0
-						|| opts.format.compare(levelFile.getMaxKey(), minKey) < 0)
-					;
-				else
-					found.add(levelFile);
+			synchronized (list) {
+				for (LevelFile levelFile : list) {
+					if (opts.format.compare(levelFile.getMinKey(), maxKey) > 0
+							|| opts.format.compare(levelFile.getMaxKey(),
+									minKey) < 0)
+						;
+					else
+						found.add(levelFile);
+				}
 			}
 		}
 		return found;
@@ -288,10 +304,8 @@ public class SortedLevelFile {
 	private void flushWriting() throws Exception {
 		System.out.println("Writing level0");
 		synchronized (writing) {
-			for (DataBlock dataBlock : writing) {
-				writeLevel0(dataBlock, true);
-			}
-			writing.notifyAll();
+			while (!writing.isEmpty())
+				writeNextMemtable();
 		}
 	}
 
@@ -301,7 +315,7 @@ public class SortedLevelFile {
 				return true;
 		}
 		synchronized (writing) {
-			for (DataBlock dataBlock : writing) {
+			for (Memtable dataBlock : writing) {
 				if (dataBlock.contains(k, opts.format))
 					return true;
 			}
@@ -328,8 +342,7 @@ public class SortedLevelFile {
 		}
 	}
 
-	public DataBlock getNextMemtable() {
-		DataBlock table = null;
+	public void writeNextMemtable() throws Exception {
 		synchronized (writing) {
 			while (writing.isEmpty() && !closed)
 				try {
@@ -337,18 +350,12 @@ public class SortedLevelFile {
 				} catch (InterruptedException e) {
 					e.printStackTrace();
 				}
-			if (closed)
-				return null;
-			if (!writing.isEmpty())
-				table = writing.get(0);
-		}
-		return table;
-	}
-
-	public void removeMemtable(DataBlock table) {
-		synchronized (writing) {
-			writing.remove(table);
-			writing.notifyAll();
+			if (!writing.isEmpty()) {
+				Memtable table = writing.get(0);
+				writeLevel0(table, false);
+				writing.remove(table);
+				writing.notifyAll();
+			}
 		}
 	}
 

@@ -20,8 +20,12 @@ public class CompactWriter {
 
 	public void add(DataBlock db) throws Exception {
 		checkNewFile();
-		currWriter.add(db);
-		checkSize();
+		DataBlockIterator it = db.iterator();
+		while (it.hasNext()) {
+			it.advance();
+			currWriter.add(it.getKey(), it.getVal());
+		}
+
 	}
 
 	private void checkNewFile() throws Exception {
@@ -34,7 +38,7 @@ public class CompactWriter {
 	}
 
 	private void checkSize() throws Exception {
-		if (curr.size() > level * file.getOpts().baseSize) {
+		if (curr.size() > (level + 1) * file.getOpts().baseSize) {
 			currWriter.close();
 			curr.commit();
 			curr = null;
@@ -47,16 +51,9 @@ public class CompactWriter {
 			curr.commit();
 		}
 		for (LevelFile levelFile : temps) {
-			// System.out.println("Persisting " + levelFile);
 			levelFile.persist();
-			// System.out.println("Wrote "
-			// + levelFile.print(file.getOpts().format));
 			file.addLevel(levelFile);
-
-			// System.out.println("Persisted " + levelFile);
 		}
-
-		// System.out.println("Finished Compact Writer");
 	}
 
 	public void add(byte[] k, byte[] v) throws Exception {

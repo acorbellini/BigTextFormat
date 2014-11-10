@@ -1,56 +1,45 @@
 package edu.bigtextformat.levels;
 
-import java.util.Iterator;
-
 import edu.bigtextformat.levels.levelfile.LevelFile;
 import edu.bigtextformat.levels.levelfile.LevelFileReader;
 
-public class PairReader implements Iterator<Pair<byte[], byte[]>> {
-
-	private LevelFile level;
+public class PairReader {
 
 	private LevelFileReader reader;
 
-	private Iterator<Pair<byte[], byte[]>> it;
-
-	private Pair<byte[], byte[]> curr;
+	private DataBlockIterator it;
 
 	public PairReader(LevelFile levelFile) throws Exception {
-		this.level = levelFile;
 		this.reader = levelFile.getReader();
-		this.curr = getNext();
 	}
 
-	private Pair<byte[], byte[]> getNext() {
+	public boolean hasNext() {
 		while (it == null || !it.hasNext()) {
 			if (!reader.hasNext())
-				return null;
+				return false;
 			else
 				it = reader.next().iterator();
 		}
-		return it.next();
+		return (it.hasNext());
 	}
 
-	@Override
-	public boolean hasNext() {
-		return (curr != null);
+	public void advance() {
+		if (!hasNext()) {
+			it = null;
+			return;
+		}
+		it.advance();
 	}
 
-	@Override
-	public Pair<byte[], byte[]> next() {
-		Pair<byte[], byte[]> ret = curr;
-		curr = getNext();
-		return ret;
+	public byte[] getKey() {
+		if (it == null)
+			return null;
+		return it.getKey();
 	}
 
-	public Pair<byte[], byte[]> peek() {
-		return curr;
+	public byte[] getValue() {
+		if (it == null)
+			return null;
+		return it.getVal();
 	}
-
-	@Override
-	public void remove() {
-		// TODO Auto-generated method stub
-		
-	}
-
 }

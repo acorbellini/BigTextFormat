@@ -15,6 +15,7 @@ public class Compactor extends Thread {
 
 	private SortedLevelFile file;
 	private boolean finished;
+	private boolean changed = false;
 
 	public Compactor(SortedLevelFile sortedLevelFile) {
 		setName("Compactor Thread");
@@ -26,11 +27,15 @@ public class Compactor extends Thread {
 	public void run() {
 		while (!file.closed) {
 			try {
-				check(file.compacting);
 				synchronized (this) {
-					wait(500);
+					while (!changed)
+						wait(1500);
+					changed = false;
 				}
-
+				if (file.closed)
+					return;
+				while (check(false))
+					;
 			} catch (Exception e1) {
 				e1.printStackTrace();
 			}
@@ -44,6 +49,11 @@ public class Compactor extends Thread {
 
 	}
 
+	public synchronized void setChanged() {
+		this.changed = true;
+		notify();
+	}
+
 	public synchronized void waitFinished() {
 		notify();
 		while (!finished)
@@ -54,16 +64,20 @@ public class Compactor extends Thread {
 			}
 	}
 
+	int lastLevel = 0;
+
 	public synchronized boolean check(boolean compactLevel0) throws Exception {
-		System.out.println("Checking");
-		int i = 0;
+		// System.out.println("Checking");
+		int cont = lastLevel;
 		boolean found = false;
 		LevelFile from = null;
 		int level = 0;
-
-		while (i <= file.getMaxLevel() && !found) {
+		// for (i = lastLevel; i != ((lastLevel % (maxLevel + 1))) + 1 &&
+		// !found; i = (i % (maxLevel + 1)) + 1) {
+		int maxLevel = file.getMaxLevel();
+		while (cont <= lastLevel + maxLevel && !found) {
+			int i = cont % (maxLevel + 1);
 			List<LevelFile> files = file.getLevel(i);
-
 			if (files != null) {
 				synchronized (files) {
 					if (i == 0
@@ -74,68 +88,66 @@ public class Compactor extends Thread {
 						level = i;
 
 						// System.out.println("Creating temp file");
-						// LevelFile temp = LevelFile.newFile(file.getCwd()
-						// .toString(), file.getOpts(), 0, file
-						// .getLastLevelIndex(0));
-						// LevelFile selected = files.get(0);
-						//
-						// List<LevelFile> intersect = file.getLevelFile(
-						// selected.getMinKey(), selected.getMaxKey(), 0);
-						//
-						// if (!intersect.contains(selected))
-						// intersect.add(selected);
-						//
-						// List<PairReader> readers = new ArrayList<>();
-						// for (LevelFile levelFile : intersect) {
-						// readers.add(levelFile.getPairReader());
-						// }
-						//
-						// try {
-						//
-						// DataBlock db = new DataBlock();
-						// LevelFileWriter writer = temp.getWriter();
-						//
-						// PairReader min = getMin(readers, file.getFormat());
-						// while (min != null) {
-						// db.add(min.peek().getA(), min.peek().getB());
-						// min.next();
-						// min = getMin(readers, file.getFormat());
-						// }
-						//
-						// writer.add(db);
-						// writer.close();
-						// } catch (Exception e) {
-						// e.printStackTrace();
-						// }
-						//
-						// temp.commitAndPersist();
-						//
-						// for (LevelFile levelFile : intersect) {
-						// file.delete(levelFile);
-						// }
-						//
-						// file.addLevel(temp);
-						//
-						// from = temp;
+						LevelFile temp = LevelFile.newFile(file.getCwd()
+								.toString(), file.getOpts(), 0, file
+								.getLastLevelIndex(0));
+						LevelFile selected = files.get(0);
+
+						List<LevelFile> intersect = file.getLevelFile(
+								selected.getMinKey(), selected.getMaxKey(), 0);
+
+						if (!intersect.contains(selected))
+							intersect.add(selected);
+
+						List<PairReader> readers = new ArrayList<>();
+						for (LevelFile levelFile : intersect) {
+							PairReader pairReader = levelFile.getPairReader();
+							readers.add(pairReader);
+							pairReader.advance();
+						}
+
+						try {
+							DataBlock db = new DataBlock();
+							LevelFileWriter writer = temp.getWriter();
+							PairReader min = getMin(readers, file.getFormat());
+							while (min != null && min.getKey() != null) {
+								db.add(min.getKey(), min.getValue());
+								min.advance();
+								min = getMin(readers, file.getFormat());
+							}
+							DataBlockIterator it = db.iterator();
+							while (it.hasNext()) {
+								it.advance();
+								writer.add(it.getKey(), it.getVal());
+							}
+							writer.close();
+						} catch (Exception e) {
+							e.printStackTrace();
+						}
+
+						temp.commitAndPersist();
+
+						for (LevelFile levelFile : intersect) {
+							file.delete(levelFile);
+						}
+
+						file.addLevel(temp);
+
+						from = temp;
 
 					} else if (i > 0
 							&& files.size() > file.getOpts().maxLevelFiles) {
 						from = files.get(0);
 						level = i;
 						found = true;
-						// for (int j = 0; j < files.size() && !found; j++) {
-						// if (files.get(j).size() > i
-						// * file.getOpts().baseSize) {
-						// from = files.get(j);
-						// level = i;
-						// found = true;
-						// }
-						// }
 					}
 				}
-				i++;
+				cont++;
 			}
 		}
+
+		lastLevel = cont % (maxLevel + 1);
+
 		if (found) {
 			merge(from, level);
 			return true;
@@ -147,10 +159,9 @@ public class Compactor extends Thread {
 	private PairReader getMin(List<PairReader> readers, BlockFormat format) {
 		PairReader min = null;
 		for (PairReader pairReader : readers) {
-			Pair<byte[], byte[]> peek = pairReader.peek();
-			if (peek != null) {
+			if (pairReader.getKey() != null) {
 				if (min == null
-						|| format.compare(min.peek().getA(), peek.getA()) > 0) {
+						|| format.compare(min.getKey(), pairReader.getKey()) > 0) {
 					min = pairReader;
 				}
 			}
@@ -159,30 +170,26 @@ public class Compactor extends Thread {
 	}
 
 	private void merge(LevelFile from, int level) throws Exception {
-		// System.out.println(DataTypeUtils.byteArrayToInt(from.getMinKey()));
-		// System.out.println(DataTypeUtils.byteArrayToInt(from.getMaxKey()));
-		System.out.println("Merging");
+		// System.out.println("Merging");
 		CompactWriter writer = new CompactWriter(file, level + 1);
 
 		List<LevelFile> intersect = file.getLevelFile(from.getMinKey(),
 				from.getMaxKey(), level + 1);
 
 		if (intersect.isEmpty()) {
-			LevelFileReader r = from.getReader();
-			while (r.hasNext()) {
-				DataBlock dataBlock = (DataBlock) r.next();
-				System.out.println("Esta agregando el bloque entero");
-				writer.add(dataBlock);
-			}
-			writer.persist();
-			// file.moveTo(from, level + 1);
-			file.delete(from);
+			// LevelFileReader r = from.getReader();
+			// while (r.hasNext()) {
+			// DataBlock dataBlock = (DataBlock) r.next();
+			// // System.out.println("Esta agregando el bloque entero");
+			// writer.add(dataBlock);
+			// }
+			// writer.persist();
+			// file.delete(from);
+			file.moveTo(from, level + 1);
 			return;
 		}
 
 		intersect.remove(from);
-
-		// DataBlock merge = new DataBlock();
 
 		Collections.sort(intersect, new Comparator<LevelFile>() {
 			@Override
@@ -192,61 +199,50 @@ public class Compactor extends Thread {
 
 		});
 
-		// System.out.println("Merging " + from.print(file.getOpts().format));
-
 		ArrayList<LevelFileReader> readers = new ArrayList<>();
 		for (LevelFile levelFile : intersect) {
-			// System.out
-			// .println("With " + levelFile.print(file.getOpts().format));
 			readers.add(levelFile.getReader());
 		}
 
 		PairReader fromReader = from.getPairReader();
 
-		Pair<byte[], byte[]> current = fromReader.next();
 		BlockFormat format = file.getOpts().format;
 
-		for (LevelFileReader levelFileReader : readers) {
-			while (levelFileReader.hasNext()) {
-				DataBlock dataBlock = (DataBlock) levelFileReader.next();
-				if (current == null
-						|| format.compare(dataBlock.lastKey(), current.getA()) < 0) {
-					System.out.println("Esta agregando el bloque entero");
-					writer.add(dataBlock);
-				} else {
-					System.out.println("Está comparando par a par.");
-					Iterator<Pair<byte[], byte[]>> it = dataBlock.iterator();
-					Pair<byte[], byte[]> pair = it.next();
-					while (pair != null) {
-						if (current == null) {
-							writer.add(pair.getA(), pair.getB());
-							pair = it.next();
-						} else {
-							int compare = format.compare(pair.getA(),
-									current.getA());
-							if (compare < 0) {
-								writer.add(pair.getA(), pair.getB());
-								pair = it.next();
-							} else if (compare == 0) {
-								writer.add(current.getA(), current.getB());
-								current = fromReader.next();
+		while (fromReader.hasNext()) {
+			fromReader.advance();
+			for (LevelFileReader levelFileReader : readers) {
+				while (levelFileReader.hasNext()) {
+					DataBlock dataBlock = (DataBlock) levelFileReader.next();
+					if (fromReader.getKey() == null
+							|| format.compare(dataBlock.lastKey(),
+									fromReader.getKey()) < 0) {
+						writer.add(dataBlock);
+					} else {
+						DataBlockIterator it = dataBlock.iterator();
+						it.advance();
+						while (it.getKey() != null) {
+							if (fromReader.getKey() == null) {
+								writer.add(it.getKey(), it.getVal());
+								it.advance();
 							} else {
-								writer.add(current.getA(), current.getB());
-								current = fromReader.next();
+								int compare = format.compare(it.getKey(),
+										fromReader.getKey());
+								if (compare < 0) {
+									writer.add(it.getKey(), it.getVal());
+									it.advance();
+								} else {
+									writer.add(fromReader.getKey(),
+											fromReader.getValue());
+									fromReader.advance();
+
+								}
 							}
 						}
 					}
 				}
 			}
-		}
-
-		if (current != null || fromReader.hasNext()) {
-			if (current != null)
-				writer.add(current.getA(), current.getB());
-			while (fromReader.hasNext()) {
-				current = fromReader.next();
-				writer.add(current.getA(), current.getB());
-			}
+			if (fromReader.getKey() != null)
+				writer.add(fromReader.getKey(), fromReader.getValue());
 		}
 
 		writer.persist();

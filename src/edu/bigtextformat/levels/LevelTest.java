@@ -5,10 +5,15 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Random;
 
 import edu.bigtextformat.record.FormatType;
 import edu.bigtextformat.record.FormatTypes;
 import edu.bigtextformat.record.RecordFormat;
+import edu.jlime.util.DataTypeUtils;
+import gnu.trove.TCollections;
+import gnu.trove.iterator.TIntIterator;
+import gnu.trove.list.array.TIntArrayList;
 
 public class LevelTest {
 
@@ -33,52 +38,57 @@ public class LevelTest {
 		// System.out.println(toAdd);
 		String PATH = args[0];
 		Integer SIZE = Integer.valueOf(args[1]);
-		while (true) {
-			// RecordFormat format = RecordFormat.create(new String[] { "k",
-			// "k2" },
-			// new FormatType<?>[] { FormatTypes.INTEGER.getType(),
-			// FormatTypes.INTEGER.getType() }, new String[] { "k",
-			// "k2" });
 
-			delete(new File(PATH));
+		TIntArrayList toAdd = new TIntArrayList(SIZE);
+		for (int i = 0; i < SIZE; i++)
+			toAdd.add(i);
 
-			RecordFormat format = RecordFormat.create(new String[] { "k" },
-					new FormatType<?>[] { FormatTypes.INTEGER.getType() },
-					new String[] { "k" });
-			SortedLevelFile file = SortedLevelFile.open(
-					PATH,
-					new LevelOptions().setFormat(format)
-							.setMaxMemTablesWriting(2)
-							.setMemTableSize(512 * 1024)
-							.setBaseSize(1024 * 1024).setMaxLevel0Files(10)
-							.setCompactLevel0Threshold(4).setMaxLevelFiles(5)
-							.setMaxBlockSize(32 * 1024));
-			ArrayList<Integer> toAdd = new ArrayList<>(SIZE);
-			for (int i = 0; i < SIZE; i++)
-				toAdd.add(i);
-			Collections.shuffle(toAdd);
-			long init = System.currentTimeMillis();
-			for (Integer i : toAdd) {
-				file.put(format.newRecord().set("k", i)
-				// .set("k2", -i)
-						.toByteArray(), "Hola!".getBytes());
-			}
-			System.out.println(System.currentTimeMillis() - init);
+		// while (true) {
+		// RecordFormat format = RecordFormat.create(new String[] { "k",
+		// "k2" },
+		// new FormatType<?>[] { FormatTypes.INTEGER.getType(),
+		// FormatTypes.INTEGER.getType() }, new String[] { "k",
+		// "k2" });
 
-			System.out.println("Compacting...");
+		delete(new File(PATH));
 
-			file.compact();
-			
-			init = System.currentTimeMillis();
-			// for (Integer integer : toAdd) {
-			// if (!file.contains(DataTypeUtils.intToByteArray(integer))) {
-			// // System.out.println(toAdd);
-			// throw new Exception("Not inserted! " + integer);
-			// }
-			// }
-			System.out.println(System.currentTimeMillis() - init);
-			file.close();
+		RecordFormat format = RecordFormat.create(new String[] { "k" },
+				new FormatType<?>[] { FormatTypes.INTEGER.getType() },
+				new String[] { "k" });
+		SortedLevelFile file = SortedLevelFile.open(PATH,
+				new LevelOptions().setFormat(format).setMaxMemTablesWriting(2)
+						.setMemTableSize(512 * 1024).setBaseSize(512 * 1024)
+						.setMaxLevel0Files(10).setCompactLevel0Threshold(5)
+						.setMaxLevelFiles(10).setMaxBlockSize(512 * 1024));
+
+		// toAdd.shuffle(new Random(System.currentTimeMillis()));
+
+		long init = System.currentTimeMillis();
+		TIntIterator it = toAdd.iterator();
+		while (it.hasNext()) {
+			file.put(format.newRecord().set("k", it.next())
+			// .set("k2", -i)
+					.toByteArray(), "Hola!".getBytes());
 		}
+		System.out.println(System.currentTimeMillis() - init);
+
+		System.out.println("Compacting...");
+
+		file.compact();
+
+		// System.out.println(file.print());
+
+		init = System.currentTimeMillis();
+		it = toAdd.iterator();
+		while (it.hasNext()) {
+			int integer = it.next();
+			if (!file.contains(DataTypeUtils.intToByteArray(integer))) {
+				throw new Exception("Not inserted! " + integer);
+			}
+		}
+		System.out.println(System.currentTimeMillis() - init);
+		file.close();
+		// }
 
 	}
 

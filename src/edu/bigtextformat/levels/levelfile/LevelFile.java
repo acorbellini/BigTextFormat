@@ -27,7 +27,7 @@ public class LevelFile {
 	private byte[] minKey;
 	private byte[] maxKey;
 	private Cache<Long, DataBlock> cache = CacheBuilder.newBuilder()
-			.maximumSize(100).build();
+			.weakValues().build();
 
 	private LevelOptions opts;
 	private int cont;
