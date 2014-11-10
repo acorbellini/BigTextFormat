@@ -55,13 +55,15 @@ public class LevelTest {
 		RecordFormat format = RecordFormat.create(new String[] { "k" },
 				new FormatType<?>[] { FormatTypes.INTEGER.getType() },
 				new String[] { "k" });
-		SortedLevelFile file = SortedLevelFile.open(PATH,
+		SortedLevelFile file = SortedLevelFile.open(
+				PATH,
 				new LevelOptions().setFormat(format).setMaxMemTablesWriting(2)
-						.setMemTableSize(512 * 1024).setBaseSize(512 * 1024)
-						.setMaxLevel0Files(10).setCompactLevel0Threshold(5)
-						.setMaxLevelFiles(10).setMaxBlockSize(512 * 1024));
+						.setMemTableSize(2 * 1024 * 1024)
+						.setBaseSize(512 * 1024).setMaxLevel0Files(10)
+						.setCompactLevel0Threshold(5).setMaxLevelFiles(10)
+						.setMaxBlockSize(64 * 1024));
 
-		// toAdd.shuffle(new Random(System.currentTimeMillis()));
+		toAdd.shuffle(new Random(System.currentTimeMillis()));
 
 		long init = System.currentTimeMillis();
 		TIntIterator it = toAdd.iterator();
@@ -78,7 +80,12 @@ public class LevelTest {
 
 		// System.out.println(file.print());
 
+		System.out.println("Querying...");
+
 		init = System.currentTimeMillis();
+
+		// toAdd.sort();
+
 		it = toAdd.iterator();
 		while (it.hasNext()) {
 			int integer = it.next();
@@ -87,6 +94,8 @@ public class LevelTest {
 			}
 		}
 		System.out.println(System.currentTimeMillis() - init);
+
+		System.out.println("Closing...");
 		file.close();
 		// }
 

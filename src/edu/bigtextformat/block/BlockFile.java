@@ -33,7 +33,7 @@ public class BlockFile implements Closeable, Iterable<Block> {
 	// private static WeakHashMap<Block, Boolean> current = new WeakHashMap<>();
 	//
 	// private static WeakHashMap<Long, Block> blocks = new WeakHashMap<>();
-	Cache<Long, Block> blocks = CacheBuilder.newBuilder().weakValues()
+	Cache<Long, Block> blocks = CacheBuilder.newBuilder().softValues()
 			.<Long, Block> build();
 
 	private BlockFile(RawFile file) {

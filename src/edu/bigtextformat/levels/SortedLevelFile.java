@@ -33,6 +33,8 @@ public class SortedLevelFile {
 
 	protected void writeLevel0(Memtable dataBlock, boolean flush)
 			throws Exception {
+		if (dataBlock.size() == 0)
+			return;
 		List<LevelFile> level0 = levels.get(0);
 		if (level0 != null) {
 			synchronized (level0) {
@@ -123,7 +125,7 @@ public class SortedLevelFile {
 			return;
 		synchronized (writing) {
 			writing.add(memTable);
-			writing.notify();
+			writer.setChanged();
 			while (writing.size() >= opts.maxMemTablesWriting && !flush)
 				try {
 					writing.wait();
@@ -172,6 +174,8 @@ public class SortedLevelFile {
 
 	public synchronized void close() throws Exception {
 		closed = true;
+		writer.waitFinished();
+		compactor.waitFinished();
 
 		writeMemtable(true);
 
@@ -181,9 +185,6 @@ public class SortedLevelFile {
 		}
 
 		flushWriting();
-
-		compactor.waitFinished();
-
 		for (Entry<Integer, List<LevelFile>> l : levels.entrySet()) {
 			List<LevelFile> list = l.getValue();
 			for (LevelFile levelFile : list) {
@@ -278,7 +279,7 @@ public class SortedLevelFile {
 	public void compact() throws Exception {
 		synchronized (this) {
 			this.compacting = true;
-			System.out.println("Writing memtable");
+			// System.out.println("Writing memtable");
 
 			writeMemtable(true);
 
@@ -290,7 +291,7 @@ public class SortedLevelFile {
 			// while (!level0.isEmpty())
 			// level0.wait();
 			// }
-			System.out.println("Running compactor");
+			// System.out.println("Running compactor");
 			while (compactor.check(true)) {
 				List<LevelFile> level0 = getLevel(0);
 				synchronized (level0) {
@@ -302,7 +303,7 @@ public class SortedLevelFile {
 	}
 
 	private void flushWriting() throws Exception {
-		System.out.println("Writing level0");
+		// System.out.println("Writing level0");
 		synchronized (writing) {
 			while (!writing.isEmpty())
 				writeNextMemtable();
@@ -344,19 +345,13 @@ public class SortedLevelFile {
 
 	public void writeNextMemtable() throws Exception {
 		synchronized (writing) {
-			while (writing.isEmpty() && !closed)
-				try {
-					writing.wait();
-				} catch (InterruptedException e) {
-					e.printStackTrace();
-				}
-			if (!writing.isEmpty()) {
-				Memtable table = writing.get(0);
-				writeLevel0(table, false);
-				writing.remove(table);
-				writing.notifyAll();
-			}
+			if (writing.isEmpty())
+				return;
+
+			Memtable table = writing.get(0);
+			writeLevel0(table, false);
+			writing.remove(table);
+			writing.notifyAll();
 		}
 	}
-
 }

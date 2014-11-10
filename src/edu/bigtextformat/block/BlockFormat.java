@@ -12,7 +12,7 @@ public abstract class BlockFormat implements Comparator<byte[]>,
 
 	public abstract byte[] getKey(BlockData data);
 
-	public abstract int compare(byte[] d1, byte[] d2);
+	// public abstract int compare(byte[] d1, byte[] d2);
 
 	public static BlockFormat getFormat(BlockFormats f, byte[] bs)
 			throws Exception {

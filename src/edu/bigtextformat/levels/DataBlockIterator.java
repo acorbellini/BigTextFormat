@@ -16,8 +16,8 @@ public class DataBlockIterator {
 			val = null;
 			return;
 		}
-		k = db.keys.get(i);
-		val = db.values.get(i);
+		k = db.get(i);
+		val = db.get(i);
 		i++;
 	}
 
@@ -30,6 +30,6 @@ public class DataBlockIterator {
 	}
 
 	public boolean hasNext() {
-		return i < db.keys.size();
+		return i < db.indexSize();
 	}
 }

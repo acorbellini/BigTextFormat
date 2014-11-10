@@ -14,8 +14,9 @@ import edu.bigtextformat.levels.levelfile.LevelFileWriter;
 public class Compactor extends Thread {
 
 	private SortedLevelFile file;
-	private boolean finished;
-	private boolean changed = false;
+	private volatile boolean finished = false;
+	private volatile boolean changed = false;
+	private volatile boolean stop = false;
 
 	public Compactor(SortedLevelFile sortedLevelFile) {
 		setName("Compactor Thread");
@@ -24,29 +25,22 @@ public class Compactor extends Thread {
 	}
 
 	@Override
-	public void run() {
+	public synchronized void run() {
 		while (!file.closed) {
 			try {
-				synchronized (this) {
-					while (!changed)
-						wait(1500);
-					changed = false;
-				}
-				if (file.closed)
-					return;
+				while (!changed)
+					wait();
+				changed = false;
+				if (stop)
+					break;
 				while (check(false))
 					;
 			} catch (Exception e1) {
 				e1.printStackTrace();
 			}
 		}
-		setFinished();
-	}
-
-	private synchronized void setFinished() {
 		finished = true;
 		notify();
-
 	}
 
 	public synchronized void setChanged() {
@@ -55,6 +49,8 @@ public class Compactor extends Thread {
 	}
 
 	public synchronized void waitFinished() {
+		stop = true;
+		setChanged();
 		notify();
 		while (!finished)
 			try {
@@ -107,7 +103,7 @@ public class Compactor extends Thread {
 						}
 
 						try {
-							DataBlock db = new DataBlock();
+							DataBlockWriter db = new DataBlockWriter();
 							LevelFileWriter writer = temp.getWriter();
 							PairReader min = getMin(readers, file.getFormat());
 							while (min != null && min.getKey() != null) {
@@ -115,7 +111,7 @@ public class Compactor extends Thread {
 								min.advance();
 								min = getMin(readers, file.getFormat());
 							}
-							DataBlockIterator it = db.iterator();
+							DataBlockIterator it = db.getDB().iterator();
 							while (it.hasNext()) {
 								it.advance();
 								writer.add(it.getKey(), it.getVal());
