@@ -16,8 +16,8 @@ public class DataBlockIterator {
 			val = null;
 			return;
 		}
-		k = db.get(i);
-		val = db.get(i);
+		k = db.getKey(i);
+		val = db.getValue(i);
 		i++;
 	}
 

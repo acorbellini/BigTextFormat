@@ -1,11 +1,12 @@
 package edu.bigtextformat.levels;
 
 import java.util.ArrayList;
-import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 
 import edu.bigtextformat.block.BlockFormat;
 import edu.bigtextformat.record.DataType;
+import edu.bigtextformat.util.Search;
 import edu.jlime.util.ByteBuffer;
 
 public class Index implements DataType<Index> {
@@ -16,7 +17,7 @@ public class Index implements DataType<Index> {
 	}
 
 	public void put(byte[] k, long blockPos, BlockFormat format) {
-		int pos = Collections.binarySearch(keys, k, format);
+		int pos = Search.search(k, keys, format);
 		if (pos < 0) {
 			pos = -(pos + 1);
 		}
@@ -41,7 +42,7 @@ public class Index implements DataType<Index> {
 	}
 
 	public long get(byte[] k, BlockFormat format) {
-		int cont = Collections.binarySearch(keys, k, format);
+		int cont = Search.search(k, keys, format);
 		if (cont < 0) {
 			cont = -(cont + 1);
 		}
@@ -49,5 +50,18 @@ public class Index implements DataType<Index> {
 			return -1;
 		else
 			return blocks.get(cont);
+	}
+
+	public Iterator<Long> range(byte[] from, byte[] to, BlockFormat format) {
+		int fromPos = Search.search(from, keys, format);
+		if (fromPos < 0)
+			fromPos = -(fromPos + 1);
+
+		int toPos = Search.search(to, keys, format);
+		if (toPos < 0)
+			toPos = -(toPos + 1);
+		
+		
+		return new IndexRangeIterator(fromPos, toPos, this	);
 	}
 }

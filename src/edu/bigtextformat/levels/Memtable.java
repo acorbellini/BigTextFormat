@@ -3,16 +3,14 @@ package edu.bigtextformat.levels;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Iterator;
 import java.util.List;
 
 import edu.bigtextformat.block.Block;
 import edu.bigtextformat.block.BlockFormat;
-import edu.bigtextformat.record.DataType;
 import edu.bigtextformat.record.FormatType;
 import edu.bigtextformat.record.FormatTypes;
 import edu.bigtextformat.record.RecordFormat;
-import edu.jlime.util.ByteBuffer;
+import edu.bigtextformat.util.Search;
 import edu.jlime.util.DataTypeUtils;
 
 public class Memtable {
@@ -40,28 +38,8 @@ public class Memtable {
 		// 0)
 		// cont++;
 		// int cont = Collections.binarySearch(keys, k, format);
-		int cont = 0;
-		boolean found = false;
-		int lo = 0;
-		int hi = keys.size() - 1;
-		while (lo <= hi && !found) {
-			// Key is in a[lo..hi] or not present.
-			int mid = lo + (hi - lo) / 2;
-			int comp = format.compare(k, keys.get(mid));
-			if (comp < 0) {
-				cont = lo;
-				hi = mid - 1;
-			} else if (comp > 0) {
-				lo = mid + 1;
-				cont = lo;
-			} else {
-				found = true;
-				cont = mid;
-			}
-			// get(mid);
-		}
-		// if (!found)
-		// cont = -cont - 1;
+		int cont = Search.search(k, keys, format);
+
 		if (cont < 0)
 			cont = -(cont + 1);
 		keys.add(cont, k);
@@ -199,5 +177,27 @@ public class Memtable {
 		// for (byte[] integer : table.keys) {
 		// System.out.println(DataTypeUtils.byteArrayToInt(integer));
 		// }
+	}
+
+	public Pair<byte[], byte[]> getFirstIntersect(byte[] from,
+			boolean inclFrom, byte[] to, boolean inclTo, BlockFormat format) {
+		int cont = Search.search(from, keys, format);
+		if (cont < 0)
+			cont = -(cont + 1);
+		else if (!inclFrom)
+			cont = cont + 1;
+
+		if (cont >= keys.size())
+			return null;
+
+		byte[] cs = keys.get(cont);
+		int compare = format.compare(cs, to);
+		if (compare > 0)
+			return null;
+
+		if (compare == 0 && !inclTo)
+			return null;
+
+		return Pair.create(cs, values.get(cont));
 	}
 }

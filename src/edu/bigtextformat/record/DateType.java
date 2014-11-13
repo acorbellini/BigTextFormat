@@ -36,4 +36,9 @@ public class DateType implements FormatType<Date> {
 		return buff.build();
 	}
 
+	@Override
+	public FormatTypes getType() {
+		return FormatTypes.DATE;
+	}
+
 }

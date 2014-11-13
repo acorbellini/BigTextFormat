@@ -27,12 +27,15 @@ public class BlockFile implements Closeable, Iterable<Block> {
 	RawFile file;
 	private Header header;
 	private int minSize;
+
 	long currentPos = 0;
+
 	boolean compressed = false;
 
 	// private static WeakHashMap<Block, Boolean> current = new WeakHashMap<>();
 	//
 	// private static WeakHashMap<Long, Block> blocks = new WeakHashMap<>();
+
 	Cache<Long, Block> blocks = CacheBuilder.newBuilder().softValues()
 			.<Long, Block> build();
 
@@ -208,6 +211,14 @@ public class BlockFile implements Closeable, Iterable<Block> {
 
 	public Block newFixedBlock(byte[] byteArray) throws Exception {
 		return newBlock(byteArray, minSize, true);
+	}
+
+	public Block getLastBlock() throws Exception {
+
+		int size = file.readInt(file.length() - 8 - 4);
+		long pos = file.length() - size;
+
+		return getBlock(pos, false);
 	}
 
 }

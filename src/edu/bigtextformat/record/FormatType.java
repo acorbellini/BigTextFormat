@@ -12,4 +12,6 @@ public interface FormatType<T> {
 
 	byte[] toBytes(Object object);
 
+	FormatTypes getType();
+
 }

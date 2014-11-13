@@ -59,7 +59,7 @@ public class LevelTest {
 				PATH,
 				new LevelOptions().setFormat(format).setMaxMemTablesWriting(2)
 						.setMemTableSize(2 * 1024 * 1024)
-						.setBaseSize(2 * 1024 * 1024).setMaxLevel0Files(10)
+						.setBaseSize(2 * 1024 * 1024).setMaxLevel0Files(30)
 						.setCompactLevel0Threshold(5).setMaxLevelFiles(10)
 						.setMaxBlockSize(256 * 1024));
 
@@ -95,6 +95,11 @@ public class LevelTest {
 		init = System.currentTimeMillis();
 
 		toAdd.sort();
+		System.out.println("Closing...");
+		file.close();
+
+		System.out.println("Reopening...");
+		file = SortedLevelFile.open(PATH, null);
 
 		it = toAdd.iterator();
 		while (it.hasNext()) {

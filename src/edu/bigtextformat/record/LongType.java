@@ -33,4 +33,9 @@ public class LongType implements FormatType<Long> {
 		return b.build();
 	}
 
+	@Override
+	public FormatTypes getType() {
+		return FormatTypes.LONG;
+	}
+
 }

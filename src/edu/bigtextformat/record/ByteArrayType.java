@@ -45,4 +45,9 @@ public class ByteArrayType implements FormatType<byte[]> {
 		return buff.build();
 	}
 
+	@Override
+	public FormatTypes getType() {
+		return FormatTypes.BYTEARRAY;
+	}
+
 }

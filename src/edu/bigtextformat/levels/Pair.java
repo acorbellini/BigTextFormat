@@ -18,12 +18,16 @@ public class Pair<T1, T2> {
 		this.a = a;
 	}
 
-	public byte[] getB() {
+	public byte[] getValue() {
 		return b;
 	}
 
 	public void setB(byte[] b) {
 		this.b = b;
+	}
+
+	public static Pair<byte[], byte[]> create(byte[] cs, byte[] cs2) {
+		return new Pair<>(cs, cs2);
 	}
 
 }

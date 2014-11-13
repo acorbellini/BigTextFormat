@@ -1,8 +1,12 @@
 package edu.bigtextformat.levels;
 
 import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map.Entry;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -141,7 +145,8 @@ public class SortedLevelFile {
 		return false;
 	}
 
-	public static SortedLevelFile open(String dir, LevelOptions opts) {
+	public static SortedLevelFile open(String dir, LevelOptions opts)
+			throws Exception {
 		SortedLevelFile ret = null;
 		File fDir = new File(dir);
 		if (!fDir.exists()) {
@@ -149,10 +154,38 @@ public class SortedLevelFile {
 		}
 		if (fDir.list().length == 0) {
 			ret = createNew(fDir, opts);
-		}
+		} else
+			ret = open(fDir);
 		if (ret != null)
 			ret.start();
 		return ret;
+	}
+
+	private static SortedLevelFile open(File fDir) throws Exception {
+		List<LevelFile> levelFiles = new ArrayList<>();
+		File[] files = fDir.listFiles();
+		int maxCount = 0;
+		for (File file : files) {
+			if (file.getPath().endsWith(".sst.new"))
+				file.delete();
+			if (file.getPath().endsWith(".sst")) {
+				LevelFile open = LevelFile.open(file);
+				levelFiles.add(open);
+				if (maxCount < open.getCont())
+					maxCount = open.getCont();
+			}
+		}
+
+		LevelOptions opts = new LevelOptions().fromByteArray(levelFiles.get(0)
+				.getBlockFile().getHeader().get("opts"));
+
+		SortedLevelFile f = new SortedLevelFile(fDir, opts);
+		f.count = new AtomicInteger(maxCount);
+		for (LevelFile levelFile : levelFiles) {
+			f.addLevel(levelFile);
+		}
+
+		return f;
 	}
 
 	private void start() {
@@ -354,5 +387,55 @@ public class SortedLevelFile {
 			writing.remove(table);
 			writing.notifyAll();
 		}
+	}
+
+	public RangeIterator rangeIterator(byte[] from, byte[] to) throws Exception {
+		return new RangeIterator(this, from, to);
+	}
+
+	public int compare(byte[] k1, byte[] k2) {
+		return opts.format.compare(k1, k2);
+	}
+
+	public Pair<byte[], byte[]> getFirstInIntersection(byte[] from, boolean inclFrom,
+			byte[] to, boolean inclTo) throws Exception {
+		Pair<byte[], byte[]> min = null;
+		synchronized (this) {
+			min = memTable.getFirstIntersect(from, inclFrom, to, inclTo,
+					opts.format);
+		}
+		synchronized (writing) {
+			for (Memtable dataBlock : writing) {
+				Pair<byte[], byte[]> inWriting = dataBlock.getFirstIntersect(
+						from, inclFrom, to, inclTo, opts.format);
+				if (min == null
+						|| opts.format.compare(min.getA(), inWriting.getA()) > 0) {
+					min = inWriting;
+				}
+			}
+		}
+
+		synchronized (levels) {
+			for (int i = 0; i <= getMaxLevel(); i++) {
+				List<LevelFile> list = levels.get(i);
+				if (list != null) {
+					Iterator<LevelFile> it = list.iterator();
+					boolean found = false;
+					while (it.hasNext() && !found) {
+						LevelFile levelFile = it.next();
+						Pair<byte[], byte[]> inLevelFile = levelFile
+								.getFirstBetween(from,inclFrom, to,inclTo, opts.format);
+						if (inLevelFile != null
+								&& (min == null || opts.format.compare(
+										min.getA(), inLevelFile.getA()) > 0)) {
+							min = inLevelFile;
+							found = true;
+						}
+					}
+				}
+			}
+		}
+
+		return min;
 	}
 }

@@ -37,4 +37,9 @@ public class StringType implements FormatType<String> {
 		return buff.build();
 	}
 
+	@Override
+	public FormatTypes getType() {
+		return FormatTypes.STRING;
+	}
+
 }

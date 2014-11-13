@@ -14,10 +14,10 @@ public class DataBlock implements DataType<DataBlock> {
 	// ByteArrayList keys = new ByteArrayList();
 	// ByteArrayList values = new ByteArrayList();
 
-	byte[] k;
-	int[] ki;
-	byte[] v;
-	int[] vi;
+	byte[] k_list;
+	int[] k_index;
+	byte[] v_list;
+	int[] v_index;
 
 	private Block b;
 
@@ -27,10 +27,10 @@ public class DataBlock implements DataType<DataBlock> {
 	}
 
 	public DataBlock(byte[] k, int[] ki, byte[] v, int[] vi) {
-		this.k = k;
-		this.ki = ki;
-		this.v = v;
-		this.vi = vi;
+		this.k_list = k;
+		this.k_index = ki;
+		this.v_list = v;
+		this.v_index = vi;
 
 	}
 
@@ -64,10 +64,10 @@ public class DataBlock implements DataType<DataBlock> {
 	@Override
 	public byte[] toByteArray() throws Exception {
 		ByteBuffer buff = new ByteBuffer();
-		buff.putByteArray(k);
-		buff.putIntArray(ki);
-		buff.putByteArray(v);
-		buff.putIntArray(vi);
+		buff.putByteArray(k_list);
+		buff.putIntArray(k_index);
+		buff.putByteArray(v_list);
+		buff.putIntArray(v_index);
 		return buff.build();
 	}
 
@@ -76,10 +76,10 @@ public class DataBlock implements DataType<DataBlock> {
 		ByteBuffer buff = new ByteBuffer(data);
 		// keys = new ByteArrayList(buff.getByteArray(), buff.getIntArray());
 		// values = new ByteArrayList(buff.getByteArray(), buff.getIntArray());
-		k = buff.getByteArray();
-		ki = buff.getIntArray();
-		v = buff.getByteArray();
-		vi = buff.getIntArray();
+		k_list = buff.getByteArray();
+		k_index = buff.getIntArray();
+		v_list = buff.getByteArray();
+		v_index = buff.getIntArray();
 		return this;
 	}
 
@@ -88,16 +88,21 @@ public class DataBlock implements DataType<DataBlock> {
 	}
 
 	public byte[] lastKey() {
-		return get(ki.length - 1);
+		return getKey(k_index.length - 1);
 	}
 
-	byte[] get(int i) {
-		return Arrays.copyOfRange(k, ki[i], i + 1 >= ki.length ? k.length
-				: ki[i + 1]);
+	byte[] getKey(int i) {
+		return Arrays.copyOfRange(k_list, k_index[i],
+				i + 1 >= k_index.length ? k_list.length : k_index[i + 1]);
+	}
+
+	byte[] getValue(int i) {
+		return Arrays.copyOfRange(v_list, v_index[i],
+				i + 1 >= v_index.length ? v_list.length : v_index[i + 1]);
 	}
 
 	public byte[] firstKey() {
-		return get(0);
+		return getKey(0);
 	}
 
 	public void setBlock(Block b) {
@@ -109,36 +114,36 @@ public class DataBlock implements DataType<DataBlock> {
 	}
 
 	public boolean contains(byte[] k, BlockFormat format) {
-		// int cont = Collections.binarySearch(new KeyReader(this), k, format);
-		// if (cont < 0)
-		// return false;
-		// return true;
+		int pos = search(k, format);
+		if (pos < 0)
+			return false;
+		return true;
 
-		// for (int i = 0; i < ki.length; i++) {
-		// int compare = format.compare(k, get(i));
-		// if (compare == 0)
-		// return true;
-		// if (compare < 0)
-		// return false;
-		// }
-		// return false;
+	}
 
+	private int search(byte[] k, BlockFormat format) {
+		boolean found = false;
 		int lo = 0;
-		int hi = ki.length - 1;
-		while (lo <= hi) {
-			// Key is in a[lo..hi] or not present.
+		int hi = k_index.length - 1;
+		int cont = 0;
+		while (lo <= hi && !found) {
 			int mid = lo + (hi - lo) / 2;
-			int comp = format.compare(k, get(mid));
-			if (comp < 0)
+			byte[] key = getKey(mid);
+			int comp = format.compare(k, key);
+			if (comp < 0) {
 				hi = mid - 1;
-			else if (comp > 0)
+				cont = lo;
+			} else if (comp > 0) {
 				lo = mid + 1;
-			else
-				return true;
-			// get(mid);
+				cont = lo;
+			} else {
+				found = true;
+				cont = mid;
+			}
 		}
-		return false;
-
+		if (!found)
+			cont = -cont - 1;
+		return cont;
 	}
 
 	public DataBlockIterator iterator() {
@@ -147,20 +152,34 @@ public class DataBlock implements DataType<DataBlock> {
 
 	public String print(BlockFormat format) {
 		StringBuilder builder = new StringBuilder();
-		// List<byte[]> keys = getKeys();
-		for (int j = 0; j < ki.length; j++) {
-			builder.append(format.print(get(j)));
+		for (int j = 0; j < k_index.length; j++) {
+			builder.append(format.print(getKey(j)));
 		}
 		return builder.toString();
 	}
 
-	// public void clear() {
-	// keys.clear();
-	// values.clear();
-	// size = 0;
-	// }
-
 	public int indexSize() {
-		return ki.length;
+		return k_index.length;
+	}
+
+	public Pair<byte[], byte[]> getFirstBetween(byte[] from, boolean inclFrom,
+			byte[] to, boolean inclTo, BlockFormat format) {
+		int pos = search(from, format);
+		if (pos < 0) {
+			pos = -(pos + 1);
+		} else if (!inclFrom)
+			pos = pos + 1;
+		if (pos >= k_index.length)
+			return null;
+
+		byte[] cs = getKey(pos);
+		int compare = format.compare(cs, to);
+		if (compare > 0)
+			return null;
+
+		if (compare == 0 && !inclTo)
+			return null;
+
+		return Pair.create(cs, getValue(pos));
 	}
 }

@@ -11,7 +11,7 @@ public class KeyReader extends AbstractList<byte[]> {
 
 	@Override
 	public byte[] get(int index) {
-		return db.get(index);
+		return db.getKey(index);
 	}
 
 	@Override

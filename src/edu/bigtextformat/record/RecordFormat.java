@@ -91,7 +91,7 @@ public class RecordFormat extends BlockFormat {
 		buff.putStringList(key);
 		buff.putInt(formats.size());
 		for (FormatType<?> formatType : formats) {
-			buff.putString(formatType.toString());
+			buff.putString(formatType.getType().name());
 		}
 
 		if (secondFormat != null) {

@@ -34,4 +34,9 @@ public class IntegerType implements FormatType<Integer> {
 		return b.build();
 	}
 
+	@Override
+	public FormatTypes getType() {
+		return FormatTypes.INTEGER;
+	}
+
 }

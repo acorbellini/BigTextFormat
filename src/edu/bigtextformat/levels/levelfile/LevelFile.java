@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Arrays;
+import java.util.Iterator;
 
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
@@ -15,34 +16,52 @@ import edu.bigtextformat.block.BlockFormat;
 import edu.bigtextformat.levels.DataBlock;
 import edu.bigtextformat.levels.Index;
 import edu.bigtextformat.levels.LevelOptions;
+import edu.bigtextformat.levels.Pair;
 import edu.bigtextformat.levels.PairReader;
 import edu.bigtextformat.levels.SortedLevelFile;
 import edu.jlime.util.DataTypeUtils;
 
 public class LevelFile {
-	private BlockFile file = null;
-	private int level;
-	private Index index;
-	private boolean commited = false;
-	private byte[] minKey;
-	private byte[] maxKey;
 	private Cache<Long, DataBlock> cache = CacheBuilder.newBuilder()
 			.softValues().build();
 
+	private BlockFile file = null;
+
+	private byte[] minKey;
+	private byte[] maxKey;
+
 	private LevelOptions opts;
 	private int cont;
+	private int level;
 	private String dir;
 	private String path;
 
-	public LevelFile(String path, LevelOptions opts, String dir, int level,
-			int cont) throws Exception {
-		this.index = new Index();
-		this.dir = dir;
+	private boolean commited = false;
+
+	private Index index;
+
+	// public LevelFile(String path, LevelOptions opts, String dir, int level,
+	// int cont) throws Exception {
+	// this.index = new Index();
+	// this.dir = dir;
+	// this.opts = opts;
+	// this.file = openBlockFile(path, true);
+	// this.path = path;
+	// this.level = level;
+	// this.cont = cont;
+	// }
+
+	private LevelFile(BlockFile bf, LevelOptions opts, int level, int cont,
+			Index i, byte[] minKey, byte[] maxKey) {
+		this.dir = bf.getRawFile().getFile().getParent();
+		this.path = bf.getRawFile().getFile().getPath();
 		this.opts = opts;
-		this.file = openBlockFile(path, true);
-		this.path = path;
+		this.file = bf;
 		this.level = level;
 		this.cont = cont;
+		this.index = i;
+		this.minKey = minKey;
+		this.maxKey = maxKey;
 	}
 
 	public void put(DataBlock table) throws Exception {
@@ -63,6 +82,8 @@ public class LevelFile {
 
 	public void commit() throws Exception {
 		file.newFixedBlock(index.toByteArray());
+		file.getHeader().putData("minKey", minKey);
+		file.getHeader().putData("maxKey", maxKey);
 		file.close();
 		commited = true;
 	}
@@ -91,12 +112,14 @@ public class LevelFile {
 	public static LevelFile newFile(String dir, LevelOptions opts, int level,
 			int cont) throws Exception {
 		String path = SortedLevelFile.getTempPath(dir, level, cont);
-		return new LevelFile(path, opts, dir, level, cont);
+		BlockFile bf = openBlockFile(path, true);
+		bf.getHeader().putData("opts", opts.toByteArray());
+		return new LevelFile(bf, opts, level, cont, new Index(), null, null);
 	}
 
 	public static BlockFile openBlockFile(String path, boolean write)
 			throws Exception {
-		return BlockFile.open(path, 32, 512,
+		return BlockFile.open(path, 512, 512,
 				DataTypeUtils.byteArrayToLong("SSTTABLE".getBytes()), true,
 				write, write);
 	}
@@ -131,7 +154,6 @@ public class LevelFile {
 		String newPath = SortedLevelFile.getPath(dir, level + 1, cont);
 		try {
 			Files.move(Paths.get(curr.getPath()), Paths.get(newPath));
-			// Files.move(curr, new File(newPath));
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
@@ -224,4 +246,39 @@ public class LevelFile {
 		file.close();
 	}
 
+	public Pair<byte[], byte[]> getFirstBetween(byte[] from, boolean inclFrom,
+			byte[] to, boolean inclTo, BlockFormat format) throws Exception {
+		if (format.compare(from, maxKey) > 0 || format.compare(to, minKey) < 0)
+			return null;
+		// long pos = index.get(from, format);
+		// if (pos < 0)
+		// return null;
+
+		Iterator<Long> it = index.range(from, to, format);
+		while (it.hasNext()) {
+			Long bPos = (Long) it.next();
+			DataBlock db = getDataBlock(bPos);
+			Pair<byte[], byte[]> pair = db.getFirstBetween(from, inclFrom, to,
+					inclTo, format);
+			if (pair != null)
+				return pair;
+			// else
+			// System.out.println("Next");
+		}
+		return null;
+	}
+
+	public static LevelFile open(File f) throws Exception {
+		BlockFile bf = openBlockFile(f.getPath(), false);
+		LevelOptions opts = new LevelOptions().fromByteArray(bf.getHeader()
+				.get("opts"));
+		int level = Integer.valueOf(f.getName().substring(0,
+				f.getName().indexOf("-")));
+		int cont = Integer.valueOf(f.getName().substring(
+				f.getName().indexOf("-") + 1, f.getName().indexOf(".")));
+		Index i = new Index().fromByteArray(bf.getLastBlock().payload());
+		byte[] minKey = bf.getHeader().get("minKey");
+		byte[] maxKey = bf.getHeader().get("maxKey");
+		return new LevelFile(bf, opts, level, cont, i, minKey, maxKey);
+	}
 }

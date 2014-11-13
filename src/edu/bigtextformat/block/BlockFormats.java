@@ -3,7 +3,7 @@ package edu.bigtextformat.block;
 import edu.bigtextformat.record.RecordFormat;
 
 public enum BlockFormats {
-	RECORD, JSON, XML;
+	RECORD(0), JSON(1), XML(2);
 
 	public BlockFormat fromByteArray(byte[] bs) throws Exception {
 		switch (this) {
@@ -15,6 +15,24 @@ public enum BlockFormats {
 			break;
 		default:
 			break;
+		}
+		return null;
+	}
+
+	int id;
+
+	private BlockFormats(int id) {
+		this.id = id;
+	}
+
+	public int getID() {
+		return id;
+	}
+
+	public static BlockFormats get(int type) {
+		for (BlockFormats f : BlockFormats.values()) {
+			if (f.getID() == type)
+				return f;
 		}
 		return null;
 	}
