@@ -397,8 +397,8 @@ public class SortedLevelFile {
 		return opts.format.compare(k1, k2);
 	}
 
-	public Pair<byte[], byte[]> getFirstInIntersection(byte[] from, boolean inclFrom,
-			byte[] to, boolean inclTo) throws Exception {
+	public Pair<byte[], byte[]> getFirstInIntersection(byte[] from,
+			boolean inclFrom, byte[] to, boolean inclTo) throws Exception {
 		Pair<byte[], byte[]> min = null;
 		synchronized (this) {
 			min = memTable.getFirstIntersect(from, inclFrom, to, inclTo,
@@ -424,7 +424,8 @@ public class SortedLevelFile {
 					while (it.hasNext() && !found) {
 						LevelFile levelFile = it.next();
 						Pair<byte[], byte[]> inLevelFile = levelFile
-								.getFirstBetween(from,inclFrom, to,inclTo, opts.format);
+								.getFirstBetween(from, inclFrom, to, inclTo,
+										opts.format);
 						if (inLevelFile != null
 								&& (min == null || opts.format.compare(
 										min.getA(), inLevelFile.getA()) > 0)) {

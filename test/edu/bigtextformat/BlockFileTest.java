@@ -7,6 +7,7 @@ import java.util.concurrent.TimeUnit;
 import edu.bigtextformat.block.Block;
 import edu.bigtextformat.block.BlockFile;
 import edu.jlime.util.DataTypeUtils;
+import edu.jlime.util.compression.Compression.CompressionType;
 
 public class BlockFileTest {
 	public static void main(String[] args) throws Exception {
@@ -27,8 +28,8 @@ public class BlockFileTest {
 
 	private void test() throws Exception {
 		long magic = DataTypeUtils.byteArrayToLong("ABLKFILE".getBytes());
-		final BlockFile file = BlockFile.open("blocktest.b", 100, 16, magic,
-				true, true, true);
+		final BlockFile file = BlockFile.create("blocktest.b", 100, 16, magic,
+				CompressionType.SNAPPY.getComp(), true);
 
 		String[] test = new String[] { "Chorioactis is a genus of fungus that contains the single species Chorioactis geaster, an extremely rare mushroom found only  "
 				+ "in select locales in Texas and Japan. In the former, it is commonly known as the devil's cigar or the Texas star in Japan it is called kirinomitake. It is notable for its unusual appearance. "

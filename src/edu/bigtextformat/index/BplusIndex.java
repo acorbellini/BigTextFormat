@@ -18,6 +18,7 @@ import edu.bigtextformat.block.BlockFormat;
 import edu.bigtextformat.block.BlockPosChangeListener;
 import edu.bigtextformat.header.Header;
 import edu.jlime.util.DataTypeUtils;
+import edu.jlime.util.compression.Compression.CompressionType;
 
 public class BplusIndex implements Index, Iterable<IndexData>,
 		BlockPosChangeListener {
@@ -53,8 +54,7 @@ public class BplusIndex implements Index, Iterable<IndexData>,
 	public BplusIndex(String string, BlockFormat format, boolean trunc,
 			boolean write) throws Exception {
 		this.format = format;
-		this.file = BlockFile.open(string, headerSize, indexBlockSize, magic,
-				false, trunc, write);
+		this.file = BlockFile.open(string, magic, trunc, write);
 		this.file.addPosListener(this);
 		this.h = file.getHeader();
 		byte[] rootAddrAsBytes = h.get("root");
@@ -73,7 +73,8 @@ public class BplusIndex implements Index, Iterable<IndexData>,
 
 	private IndexData createIndexData(Block b, long parent, int level)
 			throws Exception {
-		return IndexData.create(this, b, parent, level);
+		return IndexData.create(this, b, parent, level, true,
+				CompressionType.BZIP.getComp());
 	}
 
 	// Index deleted; -> Tal vez no sea necesario, si es que el indice no es muy

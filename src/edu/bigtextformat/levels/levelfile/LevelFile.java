@@ -112,16 +112,23 @@ public class LevelFile {
 	public static LevelFile newFile(String dir, LevelOptions opts, int level,
 			int cont) throws Exception {
 		String path = SortedLevelFile.getTempPath(dir, level, cont);
-		BlockFile bf = openBlockFile(path, true);
+		BlockFile bf = createBlockFile(path, opts);
 		bf.getHeader().putData("opts", opts.toByteArray());
 		return new LevelFile(bf, opts, level, cont, new Index(), null, null);
 	}
 
+	private static BlockFile createBlockFile(String path, LevelOptions opts)
+			throws Exception {
+		return BlockFile.create(path, 512, 512,
+				DataTypeUtils.byteArrayToLong("SSTTABLE".getBytes()),
+				opts.comp, true);
+	}
+
 	public static BlockFile openBlockFile(String path, boolean write)
 			throws Exception {
-		return BlockFile.open(path, 512, 512,
-				DataTypeUtils.byteArrayToLong("SSTTABLE".getBytes()), true,
-				write, write);
+		return BlockFile.open(path,
+				DataTypeUtils.byteArrayToLong("SSTTABLE".getBytes()), write,
+				write);
 	}
 
 	public int getLevel() {

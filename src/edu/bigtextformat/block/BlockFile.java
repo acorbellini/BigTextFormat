@@ -14,6 +14,8 @@ import com.google.common.cache.CacheBuilder;
 import edu.bigtextformat.header.Header;
 import edu.bigtextformat.raw.RawFile;
 import edu.jlime.util.DataTypeUtils;
+import edu.jlime.util.compression.Compression.CompressionType;
+import edu.jlime.util.compression.Compressor;
 
 public class BlockFile implements Closeable, Iterable<Block> {
 
@@ -30,8 +32,6 @@ public class BlockFile implements Closeable, Iterable<Block> {
 
 	long currentPos = 0;
 
-	boolean compressed = false;
-
 	// private static WeakHashMap<Block, Boolean> current = new WeakHashMap<>();
 	//
 	// private static WeakHashMap<Long, Block> blocks = new WeakHashMap<>();
@@ -39,12 +39,14 @@ public class BlockFile implements Closeable, Iterable<Block> {
 	Cache<Long, Block> blocks = CacheBuilder.newBuilder().softValues()
 			.<Long, Block> build();
 
+	private Compressor comp;
+
 	private BlockFile(RawFile file) {
 		this.file = file;
 	}
 
-	public void setCompressed(boolean compressed) {
-		this.compressed = compressed;
+	public void setCompressed(Compressor comp) {
+		this.comp = comp;
 	}
 
 	void writeBlock(long pos, Block block, byte[] bytes) throws Exception {
@@ -84,28 +86,58 @@ public class BlockFile implements Closeable, Iterable<Block> {
 		return header;
 	}
 
-	public static BlockFile open(String path, int headerSize, int minSize,
-			long magic, boolean compressed, boolean trunc, boolean write)
-			throws Exception {
+	public static BlockFile open(String path, long magic, boolean trunc,
+			boolean write) throws Exception {
 		RawFile file = RawFile.getChannelRawFile(path, trunc, write);
 
 		BlockFile ret = new BlockFile(file);
-		ret.setCompressed(compressed);
+
 		ret.currentPos = file.length();
 		if (file.length() > 0l) {
 			// exists
 			ret.magic = file.readLong(0);
 			if (ret.magic != magic)
 				throw new Exception("Wrong File Type");
+		} else
+			throw new Exception(
+					"Corrupted File?, file length is greater than 0");
+		Block headerBlock = ret.getBlock(8l, -1, false);
+		// headerBlock.setFixed(true);
+		// headerBlock.setMemoryMapped(true);
+		ret.header = Header.open(headerBlock);
+
+		byte compression = ret.header.get("comp")[0];
+		if (compression != -1)
+			ret.comp = CompressionType.getByID(compression);
+		ret.minSize = DataTypeUtils.byteArrayToInt(ret.header.get("minSize"));
+		return ret;
+	}
+
+	public static BlockFile create(String path, int headerSize, int minSize,
+			long magic, Compressor comp, boolean trunc) throws Exception {
+		RawFile file = RawFile.getChannelRawFile(path, trunc, true);
+		BlockFile ret = new BlockFile(file);
+		ret.currentPos = file.length();
+		if (file.length() > 0l) {
+			throw new Exception("Already Exists.");
 		} else {
 			ret.reserve(8);
 			file.write(0, DataTypeUtils.longToByteArray(magic));
 		}
+
+		ret.setCompressed(comp);
+
 		Block headerBlock = ret.getBlock(8l, headerSize, true);
 		headerBlock.setFixed(true);
 		// headerBlock.setMemoryMapped(true);
 		ret.header = Header.open(headerBlock);
+		if (comp != null) {
+			ret.header.putData("comp", new byte[] { comp.getType().getId() });
+			ret.comp = comp;
+		} else
+			ret.header.putData("comp", new byte[] { -1 });
 		ret.minSize = minSize;
+		ret.header.putData("minSize", DataTypeUtils.intToByteArray(minSize));
 		return ret;
 	}
 
@@ -134,7 +166,8 @@ public class BlockFile implements Closeable, Iterable<Block> {
 			throws Exception {
 		Block b = Block.create(this, size);
 		b.setFixed(fixed);
-		b.setCompressed(compressed);
+		if (comp != null)
+			b.setCompressed(comp);
 		if (bytes != null)
 			b.setPayload(bytes);
 		return b;

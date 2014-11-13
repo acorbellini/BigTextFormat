@@ -12,6 +12,8 @@ import edu.bigtextformat.record.DataType;
 import edu.jlime.util.ByteBuffer;
 import edu.jlime.util.DataTypeUtils;
 import edu.jlime.util.compression.Compression;
+import edu.jlime.util.compression.Compression.CompressionType;
+import edu.jlime.util.compression.Compressor;
 
 public class IndexData implements DataType<IndexData> {
 	int level;
@@ -34,13 +36,18 @@ public class IndexData implements DataType<IndexData> {
 
 	private boolean compressed = true;
 
-	private IndexData(BplusIndex bplusIndex, Block block, long parent, int level) {
+	private Compressor comp;
+
+	private IndexData(BplusIndex bplusIndex, Block block, long parent,
+			int level, boolean compressed, Compressor comp) {
 		this.block = block;
 		this.parent = parent;
 		this.index = bplusIndex;
 		this.keys = new ArrayList<byte[]>(index.getIndexSize());
 		this.values = new ArrayList<byte[]>(index.getIndexSize() + 1); // keys.size+1
 		this.level = level;
+		this.compressed = compressed;
+		this.comp = comp;
 	}
 
 	public int level() {
@@ -150,13 +157,15 @@ public class IndexData implements DataType<IndexData> {
 		buff.putLong(prev);
 		buff.putLong(next);
 		buff.putBoolean(compressed);
+		if (compressed)
+			buff.put(comp.getType().getId());
 
 		ByteBuffer lists = new ByteBuffer();
 		lists.putByteArrayList(keys);
 		lists.putByteArrayList(values);
 		byte[] listsAsBytes = lists.build();
 		if (this.compressed)
-			listsAsBytes = Compression.compress(lists.build());
+			listsAsBytes = comp.compress(lists.build());
 		buff.putByteArray(listsAsBytes);
 		return buff.build();
 	}
@@ -169,10 +178,11 @@ public class IndexData implements DataType<IndexData> {
 		this.prev = buff.getLong();
 		this.next = buff.getLong();
 		this.compressed = buff.getBoolean();
-
+		if (compressed)
+			this.comp = CompressionType.getByID(buff.get());
 		byte[] listsAsBytes = buff.getByteArray();
 		if (this.compressed)
-			listsAsBytes = Compression.uncompress(listsAsBytes);
+			listsAsBytes = comp.uncompress(listsAsBytes);
 		ByteBuffer lists = new ByteBuffer(listsAsBytes);
 		this.keys = lists.getByteArrayList();
 		this.values = lists.getByteArrayList();
@@ -181,7 +191,7 @@ public class IndexData implements DataType<IndexData> {
 
 	public IndexData split() throws Exception {
 		IndexData newData = IndexData.create(index, index.file.newEmptyBlock(),
-				parent, level);
+				parent, level, compressed, comp);
 		int mid = keys.size() / 2;
 		for (int i = 0; i < mid; i++) {
 			newData.put(keys.get(i), values.get(i), null);
@@ -227,7 +237,7 @@ public class IndexData implements DataType<IndexData> {
 
 	public static IndexData read(BplusIndex bplusIndex, Block block)
 			throws Exception {
-		IndexData data = new IndexData(bplusIndex, block, -1, -1);
+		IndexData data = new IndexData(bplusIndex, block, -1, -1, false, null);
 		data.fromByteArray(block.payload());
 		return data;
 	}
@@ -245,8 +255,8 @@ public class IndexData implements DataType<IndexData> {
 	}
 
 	public static IndexData create(BplusIndex bplusIndex, Block b, long parent,
-			int level) throws Exception {
-		return new IndexData(bplusIndex, b, parent, level);
+			int level, boolean compressed, Compressor comp) throws Exception {
+		return new IndexData(bplusIndex, b, parent, level, compressed, comp);
 	}
 
 	public void persist() throws Exception {

@@ -4,6 +4,8 @@ import edu.bigtextformat.block.BlockFormat;
 import edu.bigtextformat.block.BlockFormats;
 import edu.bigtextformat.record.DataType;
 import edu.jlime.util.ByteBuffer;
+import edu.jlime.util.compression.Compression.CompressionType;
+import edu.jlime.util.compression.Compressor;
 
 public class LevelOptions implements DataType<LevelOptions> {
 
@@ -16,6 +18,13 @@ public class LevelOptions implements DataType<LevelOptions> {
 	public int compactLevel0Threshold = 2;
 
 	public BlockFormat format;
+
+	public Compressor comp;
+
+	public LevelOptions setCompressed(Compressor comp) {
+		this.comp = comp;
+		return this;
+	}
 
 	public LevelOptions setFormat(BlockFormat format) {
 		this.format = format;
@@ -69,6 +78,10 @@ public class LevelOptions implements DataType<LevelOptions> {
 		buff.putInt(compactLevel0Threshold);
 		buff.putInt(format.getType().getID());
 		buff.putByteArray(format.toByteArray());
+		if (comp != null)
+			buff.put(comp.getType().getId());
+		else
+			buff.put((byte) -1);
 		return buff.build();
 	}
 
@@ -85,6 +98,9 @@ public class LevelOptions implements DataType<LevelOptions> {
 		int type = buff.getInt();
 		format = BlockFormat.getFormat(BlockFormats.get(type),
 				buff.getByteArray());
+		byte compType = buff.get();
+		if (compType != -1)
+			this.comp = CompressionType.getByID(compType);
 		return this;
 	}
 }

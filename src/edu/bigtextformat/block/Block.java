@@ -7,6 +7,8 @@ import edu.bigtextformat.record.DataType;
 import edu.jlime.util.ByteBuffer;
 import edu.jlime.util.DataTypeUtils;
 import edu.jlime.util.compression.Compression;
+import edu.jlime.util.compression.Compressor;
+import edu.jlime.util.compression.Compression.CompressionType;
 
 public class Block implements DataType<Block> {
 	private static final byte[] BLOCK_MAGIC_END_AS_BYTES = "BLOCKEND"
@@ -27,7 +29,6 @@ public class Block implements DataType<Block> {
 	BlockFile file;
 	private boolean deleted = false;
 	private boolean fixed = false;
-	private boolean compressed = false;
 	private boolean memoryMapped = false;
 
 	private byte[] p = new byte[] {};
@@ -36,6 +37,8 @@ public class Block implements DataType<Block> {
 	private long nextBlockPos;
 
 	private java.nio.ByteBuffer mappedBuffer;
+
+	private Compressor comp;
 
 	// BLOCKSTART+TOTAL_BLOCK_SIZE + STATUS + PAYLOAD_SIZE + PAYLOAD (0) + CRC +
 	// PAD (0) +
@@ -79,13 +82,17 @@ public class Block implements DataType<Block> {
 		this.fixed = f;
 	}
 
-	public void setCompressed(boolean compressed) {
-		this.compressed = compressed;
+	public void setCompressed(Compressor comp) {
+		this.comp = comp;
 	}
 
 	@Override
 	public byte[] toByteArray() {
 		ByteBuffer buff = new ByteBuffer(4 + p.length + 8);
+		if (comp != null)
+			buff.put(comp.getType().getId());
+		else
+			buff.put((byte) -1);
 		buff.putByteArray(p);// NDATA
 		buff.putLong(getCheckSum(p)); // 8
 		byte[] built = buff.build();
@@ -162,8 +169,7 @@ public class Block implements DataType<Block> {
 	}
 
 	private Byte getStatus() {
-		byte status = (byte) ((deleted ? 0x1 : 0x0) | (fixed ? 0x2 : 0x0) | (compressed ? 0x4
-				: 0x0));
+		byte status = (byte) ((deleted ? 0x1 : 0x0) | (fixed ? 0x2 : 0x0));
 		return status;
 	}
 
@@ -179,7 +185,6 @@ public class Block implements DataType<Block> {
 		byte status = outer.get();
 		deleted = ((status & 0x1) == 0x1);
 		fixed = ((status & 0x2) == 0x2);
-		compressed = ((status & 0x4) == 0x4);
 
 		byte[] escaped = outer.getByteArray();
 
@@ -192,7 +197,10 @@ public class Block implements DataType<Block> {
 
 		ByteBuffer buff = new ByteBuffer(unescape(escaped));
 		this.maxPayloadSize = data.length;
-
+		byte compType = buff.get();
+		if (compType != -1) {
+			comp = CompressionType.getByID(compType);
+		}
 		p = buff.getByteArray();
 		checksum = buff.getLong();
 
@@ -233,8 +241,8 @@ public class Block implements DataType<Block> {
 	}
 
 	public byte[] payload() {
-		if (compressed)
-			return Compression.uncompress(p);
+		if (comp != null)
+			return comp.uncompress(p);
 		return p;
 	}
 
@@ -242,8 +250,8 @@ public class Block implements DataType<Block> {
 		long oldpos = pos;
 		byte[] oldPayload = p;
 		byte[] payload = newPayload;
-		if (compressed)
-			payload = Compression.compress(newPayload);
+		if (comp != null)
+			payload = comp.compress(newPayload);
 
 		updateMaxSize(payload.length + 64);
 
