@@ -11,8 +11,7 @@ import edu.bigtextformat.block.BlockFormat;
 import edu.bigtextformat.record.DataType;
 import edu.jlime.util.ByteBuffer;
 import edu.jlime.util.DataTypeUtils;
-import edu.jlime.util.compression.Compression;
-import edu.jlime.util.compression.Compression.CompressionType;
+import edu.jlime.util.compression.CompressionType;
 import edu.jlime.util.compression.Compressor;
 
 public class IndexData implements DataType<IndexData> {

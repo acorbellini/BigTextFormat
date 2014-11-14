@@ -3,8 +3,12 @@ package edu.bigtextformat.levels;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 
 import edu.bigtextformat.block.BlockFormat;
 import edu.bigtextformat.levels.levelfile.LevelFile;
@@ -15,6 +19,9 @@ public class Compactor extends Thread {
 
 	private SortedLevelFile file;
 	private volatile boolean finished = false;
+
+	Semaphore sem = new Semaphore(10);
+	// ExecutorService executors = Executors.newFixedThreadPool(10);
 
 	Object changedLock = new Object();
 
@@ -40,12 +47,31 @@ public class Compactor extends Thread {
 				}
 				if (stop)
 					break;
+				sem.acquire();
+				// executors.execute(new Runnable() {
+				// @Override
+				// public void run() {
+				// try {
 				while (check(false))
 					;
+				sem.release();
+				// } catch (Exception e) {
+				// e.printStackTrace();
+				// }
+				// }
+				// });
+
 			} catch (Exception e1) {
 				e1.printStackTrace();
 			}
 		}
+		// executors.shutdown();
+		// try {
+		// executors.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS);
+		// } catch (InterruptedException e) {
+		// e.printStackTrace();
+		// }
+
 		synchronized (finishedLock) {
 			finished = true;
 			finishedLock.notify();
@@ -85,7 +111,7 @@ public class Compactor extends Thread {
 		// !found; i = (i % (maxLevel + 1)) + 1) {
 		int maxLevel = file.getMaxLevel();
 
-		List<LevelFile> level0Merge = null;
+		Set<LevelFile> level0Merge = null;
 
 		while (cont <= lastLevel + maxLevel && !found) {
 			int i = cont % (maxLevel + 1);
@@ -101,12 +127,19 @@ public class Compactor extends Thread {
 						// System.out.println("Creating temp file");
 						LevelFile selected = files.get(0);
 
-						level0Merge = file.getLevelFile(selected.getMinKey(),
+						level0Merge = file.intersect(selected.getMinKey(),
 								selected.getMaxKey(), 0);
 
 						if (!level0Merge.contains(selected))
 							level0Merge.add(selected);
-
+						// if (files.size() >= file.getOpts().minMergeElements)
+						// {
+						int levelFileToMerge = 0;
+						while (level0Merge.size() < file.getOpts().minMergeElements
+								&& levelFileToMerge < files.size()) {
+							level0Merge.add(files.get(levelFileToMerge++));
+						}
+						// }
 					} else if (i > 0
 							&& files.size() > file.getOpts().maxLevelFiles) {
 						from = files.get(0);
@@ -130,7 +163,7 @@ public class Compactor extends Thread {
 
 	}
 
-	private LevelFile mergeLevel0(List<LevelFile> intersect) throws Exception {
+	private LevelFile mergeLevel0(Set<LevelFile> intersect) throws Exception {
 
 		LevelFile temp = LevelFile.newFile(file.getCwd().toString(),
 				file.getOpts(), 0, file.getLastLevelIndex(0));
@@ -187,11 +220,22 @@ public class Compactor extends Thread {
 
 	private void merge(LevelFile from, int level) throws Exception {
 		// System.out.println("Merging");
-		CompactWriter writer = new CompactWriter(file, level + 1);
 
-		List<LevelFile> intersect = file.getLevelFile(from.getMinKey(),
+		Set<LevelFile> intersect = file.intersect(from.getMinKey(),
 				from.getMaxKey(), level + 1);
 
+		List<LevelFile> currLevel = file.getLevel(level + 1);
+		if (currLevel != null)
+			synchronized (currLevel) {
+				int levelFileToMerge = 0;
+				while (intersect.size() < file.getOpts().minMergeElements
+						&& levelFileToMerge < currLevel.size()) {
+					intersect.add(currLevel.get(levelFileToMerge++));
+				}
+			}
+		
+		intersect.remove(from);
+		
 		if (intersect.isEmpty()) {
 			// LevelFileReader r = from.getReader();
 			// while (r.hasNext()) {
@@ -204,10 +248,11 @@ public class Compactor extends Thread {
 			file.moveTo(from, level + 1);
 			return;
 		}
+		CompactWriter writer = new CompactWriter(file, level + 1);
 
-		intersect.remove(from);
+		ArrayList<LevelFile> intersectSorted = new ArrayList<>(intersect);
 
-		Collections.sort(intersect, new Comparator<LevelFile>() {
+		Collections.sort(intersectSorted, new Comparator<LevelFile>() {
 			@Override
 			public int compare(LevelFile o1, LevelFile o2) {
 				return file.getFormat().compare(o1.getMaxKey(), o2.getMaxKey());
@@ -216,7 +261,7 @@ public class Compactor extends Thread {
 		});
 
 		ArrayList<LevelFileReader> readers = new ArrayList<>();
-		for (LevelFile levelFile : intersect) {
+		for (LevelFile levelFile : intersectSorted) {
 			readers.add(levelFile.getReader());
 		}
 
@@ -263,7 +308,7 @@ public class Compactor extends Thread {
 
 		writer.persist();
 
-		for (LevelFile levelFile : intersect) {
+		for (LevelFile levelFile : intersectSorted) {
 			file.delete(levelFile);
 		}
 		file.delete(from);

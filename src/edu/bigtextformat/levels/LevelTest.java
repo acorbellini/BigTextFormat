@@ -1,19 +1,16 @@
 package edu.bigtextformat.levels;
 
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Random;
-
 import edu.bigtextformat.record.FormatType;
 import edu.bigtextformat.record.FormatTypes;
 import edu.bigtextformat.record.RecordFormat;
 import edu.jlime.util.DataTypeUtils;
-import gnu.trove.TCollections;
 import gnu.trove.iterator.TIntIterator;
 import gnu.trove.list.array.TIntArrayList;
+
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.util.Random;
 
 public class LevelTest {
 

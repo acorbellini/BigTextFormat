@@ -19,11 +19,10 @@ public class CompactWriter {
 	}
 
 	public void add(DataBlock db) throws Exception {
-		checkNewFile();
 		DataBlockIterator it = db.iterator();
 		while (it.hasNext()) {
 			it.advance();
-			currWriter.add(it.getKey(), it.getVal());
+			add(it.getKey(), it.getVal());
 		}
 
 	}

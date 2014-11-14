@@ -1,14 +1,13 @@
 package edu.bigtextformat.levels;
 
 import java.io.File;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map.Entry;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import edu.bigtextformat.block.BlockFormat;
@@ -94,9 +93,9 @@ public class SortedLevelFile {
 		}
 
 		if (level.getLevel() == 0 && list.size() > 0
-				&& (list.size() == opts.compactLevel0Threshold + 1))
+				&& (list.size() == opts.compactLevel0Threshold))
 			compactor.setChanged();
-		else if (list.size() == opts.maxLevelFiles + 1)
+		else if (list.size() == opts.maxLevelFiles)
 			compactor.setChanged();
 
 	}
@@ -243,8 +242,8 @@ public class SortedLevelFile {
 		// return max;
 	}
 
-	public List<LevelFile> getLevelFile(byte[] minKey, byte[] maxKey, int l) {
-		List<LevelFile> found = new ArrayList<>();
+	public Set<LevelFile> intersect(byte[] minKey, byte[] maxKey, int l) {
+		Set<LevelFile> found = new HashSet<>();
 		List<LevelFile> list = null;
 		synchronized (levels) {
 			list = levels.get(l);

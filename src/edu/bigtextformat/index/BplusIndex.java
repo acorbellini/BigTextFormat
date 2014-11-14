@@ -18,7 +18,7 @@ import edu.bigtextformat.block.BlockFormat;
 import edu.bigtextformat.block.BlockPosChangeListener;
 import edu.bigtextformat.header.Header;
 import edu.jlime.util.DataTypeUtils;
-import edu.jlime.util.compression.Compression.CompressionType;
+import edu.jlime.util.compression.CompressionType;
 
 public class BplusIndex implements Index, Iterable<IndexData>,
 		BlockPosChangeListener {

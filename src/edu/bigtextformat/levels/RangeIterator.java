@@ -2,8 +2,6 @@ package edu.bigtextformat.levels;
 
 import java.util.Iterator;
 
-import edu.bigtextformat.block.BlockFormat;
-
 public class RangeIterator implements Iterator<Pair<byte[], byte[]>> {
 
 	private SortedLevelFile file;

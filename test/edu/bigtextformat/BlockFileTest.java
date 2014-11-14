@@ -7,7 +7,7 @@ import java.util.concurrent.TimeUnit;
 import edu.bigtextformat.block.Block;
 import edu.bigtextformat.block.BlockFile;
 import edu.jlime.util.DataTypeUtils;
-import edu.jlime.util.compression.Compression.CompressionType;
+import edu.jlime.util.compression.CompressionType;
 
 public class BlockFileTest {
 	public static void main(String[] args) throws Exception {

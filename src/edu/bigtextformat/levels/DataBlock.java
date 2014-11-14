@@ -1,8 +1,6 @@
 package edu.bigtextformat.levels;
 
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
 
 import edu.bigtextformat.block.Block;
 import edu.bigtextformat.block.BlockFormat;

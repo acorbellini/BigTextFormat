@@ -14,7 +14,7 @@ import com.google.common.cache.CacheBuilder;
 import edu.bigtextformat.header.Header;
 import edu.bigtextformat.raw.RawFile;
 import edu.jlime.util.DataTypeUtils;
-import edu.jlime.util.compression.Compression.CompressionType;
+import edu.jlime.util.compression.CompressionType;
 import edu.jlime.util.compression.Compressor;
 
 public class BlockFile implements Closeable, Iterable<Block> {

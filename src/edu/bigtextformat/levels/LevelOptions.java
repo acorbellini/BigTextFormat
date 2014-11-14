@@ -1,10 +1,13 @@
 package edu.bigtextformat.levels;
 
+import java.util.List;
+
 import edu.bigtextformat.block.BlockFormat;
 import edu.bigtextformat.block.BlockFormats;
+import edu.bigtextformat.levels.levelfile.LevelFile;
 import edu.bigtextformat.record.DataType;
 import edu.jlime.util.ByteBuffer;
-import edu.jlime.util.compression.Compression.CompressionType;
+import edu.jlime.util.compression.CompressionType;
 import edu.jlime.util.compression.Compressor;
 
 public class LevelOptions implements DataType<LevelOptions> {
@@ -20,6 +23,7 @@ public class LevelOptions implements DataType<LevelOptions> {
 	public BlockFormat format;
 
 	public Compressor comp;
+	public int minMergeElements;
 
 	public LevelOptions setCompressed(Compressor comp) {
 		this.comp = comp;
@@ -28,6 +32,11 @@ public class LevelOptions implements DataType<LevelOptions> {
 
 	public LevelOptions setFormat(BlockFormat format) {
 		this.format = format;
+		return this;
+	}
+
+	public LevelOptions setMinMergeElements(int minMergeElements) {
+		this.minMergeElements = minMergeElements;
 		return this;
 	}
 
@@ -75,6 +84,7 @@ public class LevelOptions implements DataType<LevelOptions> {
 		buff.putInt(baseSize);
 		buff.putInt(maxLevel0Files);
 		buff.putInt(maxLevelFiles);
+		buff.putInt(minMergeElements);
 		buff.putInt(compactLevel0Threshold);
 		buff.putInt(format.getType().getID());
 		buff.putByteArray(format.toByteArray());
@@ -94,6 +104,7 @@ public class LevelOptions implements DataType<LevelOptions> {
 		baseSize = buff.getInt();
 		maxLevel0Files = buff.getInt();
 		maxLevelFiles = buff.getInt();
+		minMergeElements = buff.getInt();
 		compactLevel0Threshold = buff.getInt();
 		int type = buff.getInt();
 		format = BlockFormat.getFormat(BlockFormats.get(type),

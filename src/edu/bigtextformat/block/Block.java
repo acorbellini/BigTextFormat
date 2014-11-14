@@ -6,9 +6,8 @@ import edu.bigtextformat.raw.RawFile;
 import edu.bigtextformat.record.DataType;
 import edu.jlime.util.ByteBuffer;
 import edu.jlime.util.DataTypeUtils;
-import edu.jlime.util.compression.Compression;
+import edu.jlime.util.compression.CompressionType;
 import edu.jlime.util.compression.Compressor;
-import edu.jlime.util.compression.Compression.CompressionType;
 
 public class Block implements DataType<Block> {
 	private static final byte[] BLOCK_MAGIC_END_AS_BYTES = "BLOCKEND"
