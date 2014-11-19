@@ -11,8 +11,8 @@ import java.nio.file.OpenOption;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
 
 public class RawFileChannel extends RawFile {
 	// private RandomAccessFile f;
@@ -23,15 +23,16 @@ public class RawFileChannel extends RawFile {
 			throws IOException {
 		this.p = Paths.get(path);
 
-		List<OpenOption> opts = new ArrayList<>();
+		Set<OpenOption> opts = new HashSet<>();
 		opts.add(StandardOpenOption.READ);
 		if (write)
 			opts.add(StandardOpenOption.WRITE);
 		if (trunc)
 			opts.add(StandardOpenOption.TRUNCATE_EXISTING);
 		opts.add(StandardOpenOption.CREATE);
+		opts.add(StandardOpenOption.SYNC);
 
-		this.f = FileChannel.open(p, opts.toArray(new OpenOption[] {}));
+		this.f = FileChannel.open(p, opts);
 		// String mode = "r";
 		// if (write)
 		// mode = "rw";
@@ -99,6 +100,18 @@ public class RawFileChannel extends RawFile {
 	public void delete() throws IOException {
 		close();
 		Files.delete(p);
+	}
+
+	@Override
+	public synchronized void copy(RawFile orig, long from, int len, long pos)
+			throws IOException {
+		FileChannel fc = ((RawFileChannel) orig).f;
+		f.position(pos);
+		try {
+			fc.transferTo(from, len, f);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
 	}
 
 }

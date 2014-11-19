@@ -16,20 +16,20 @@ public class RangeIterator implements Iterator<Pair<byte[], byte[]>> {
 		this.from = from;
 		this.to = to;
 		this.curr = file.getFirstInIntersection(from, true, to, true);
-		if (curr!=null && file.compare(curr.getA(), to) > 0)
+		if (curr!=null && file.compare(curr.getKey(), to) > 0)
 			curr = null;
 	}
 
 	@Override
 	public boolean hasNext() {
-		return curr != null && file.compare(to, curr.getA()) >= 0;
+		return curr != null && file.compare(to, curr.getKey()) >= 0;
 	}
 
 	@Override
 	public Pair<byte[], byte[]> next() {
 		Pair<byte[], byte[]> ret = curr;
 		try {
-			curr = file.getFirstInIntersection(curr.getA(), false, to, true);
+			curr = file.getFirstInIntersection(curr.getKey(), false, to, true);
 		} catch (Exception e) {
 			curr = null;
 		}

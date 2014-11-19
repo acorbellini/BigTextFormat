@@ -34,7 +34,7 @@ public class DataImpl implements Data {
 	// Los bloques de datos se parten cuando se pasan de cierto tamaño.
 
 	public DataImpl(String filePath) throws Exception {
-		file = BlockFile.open(filePath, magic, true, true);
+		file = BlockFile.open(filePath, magic);
 
 		String type = file.getHeader().getString("format_type");
 

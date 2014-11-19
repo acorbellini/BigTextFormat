@@ -3,9 +3,9 @@ package edu.bigtextformat.levels;
 import java.util.AbstractList;
 
 public class KeyReader extends AbstractList<byte[]> {
-	DataBlock db;
+	DataBlockImpl db;
 
-	public KeyReader(DataBlock db) {
+	public KeyReader(DataBlockImpl db) {
 		this.db = db;
 	}
 

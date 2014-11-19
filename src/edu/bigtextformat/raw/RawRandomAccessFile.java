@@ -96,4 +96,10 @@ public class RawRandomAccessFile extends RawFile {
 		Files.delete(p);
 	}
 
+	@Override
+	public void copy(RawFile orig, long from, int len, long pos) {
+		// TODO Auto-generated method stub
+		
+	}
+
 }

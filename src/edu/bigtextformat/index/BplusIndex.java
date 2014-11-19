@@ -54,7 +54,7 @@ public class BplusIndex implements Index, Iterable<IndexData>,
 	public BplusIndex(String string, BlockFormat format, boolean trunc,
 			boolean write) throws Exception {
 		this.format = format;
-		this.file = BlockFile.open(string, magic, trunc, write);
+		this.file = BlockFile.open(string, magic);
 		this.file.addPosListener(this);
 		this.h = file.getHeader();
 		byte[] rootAddrAsBytes = h.get("root");

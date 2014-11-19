@@ -1,10 +1,7 @@
 package edu.bigtextformat.levels;
 
-import java.util.List;
-
 import edu.bigtextformat.block.BlockFormat;
 import edu.bigtextformat.block.BlockFormats;
-import edu.bigtextformat.levels.levelfile.LevelFile;
 import edu.bigtextformat.record.DataType;
 import edu.jlime.util.ByteBuffer;
 import edu.jlime.util.compression.CompressionType;
@@ -22,8 +19,12 @@ public class LevelOptions implements DataType<LevelOptions> {
 
 	public BlockFormat format;
 
-	public Compressor comp;
-	public int minMergeElements;
+	public Compressor comp = CompressionType.SNAPPY.getComp();
+	public int minMergeElements = 2;
+	public int maxCompactorThreads = 20;
+	public int maxWriterThreads = 20;
+	public int sizeModifier = 4;
+	public float maxSize = 50 * 1024 * 1024;
 
 	public LevelOptions setCompressed(Compressor comp) {
 		this.comp = comp;
@@ -86,6 +87,9 @@ public class LevelOptions implements DataType<LevelOptions> {
 		buff.putInt(maxLevelFiles);
 		buff.putInt(minMergeElements);
 		buff.putInt(compactLevel0Threshold);
+		buff.putInt(maxCompactorThreads);
+		buff.putInt(maxWriterThreads);
+
 		buff.putInt(format.getType().getID());
 		buff.putByteArray(format.toByteArray());
 		if (comp != null)
@@ -106,6 +110,8 @@ public class LevelOptions implements DataType<LevelOptions> {
 		maxLevelFiles = buff.getInt();
 		minMergeElements = buff.getInt();
 		compactLevel0Threshold = buff.getInt();
+		maxCompactorThreads = buff.getInt();
+		maxWriterThreads = buff.getInt();
 		int type = buff.getInt();
 		format = BlockFormat.getFormat(BlockFormats.get(type),
 				buff.getByteArray());

@@ -1,5 +1,6 @@
 package edu.bigtextformat.levels.levelfile;
 
+import edu.bigtextformat.levels.DataBlock;
 import edu.bigtextformat.levels.DataBlockWriter;
 import edu.bigtextformat.levels.LevelOptions;
 
@@ -16,14 +17,25 @@ public class LevelFileWriter {
 
 	public void add(byte[] k, byte[] val) throws Exception {
 		if (curr.size() >= opts.maxBlockSize) {
-			f.put(curr.getDB());
-			curr.clear();
+			flushCurrentBlock();
 		}
 		curr.add(k, val);
 	}
 
-	public void close() throws Exception {
+	private void flushCurrentBlock() throws Exception {
 		f.put(curr.getDB());
+		curr.clear();
+	}
+
+	public void close() throws Exception {
+		if (curr.size() > 0)
+			f.put(curr.getDB());
+	}
+
+	public void add(DataBlock dataBlock) throws Exception {
+		if (curr.size() > 0)
+			flushCurrentBlock();
+		f.put(dataBlock);
 	}
 
 }

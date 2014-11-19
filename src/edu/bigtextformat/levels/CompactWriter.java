@@ -13,6 +13,7 @@ public class CompactWriter {
 	private int level;
 	private SortedLevelFile file;
 
+
 	public CompactWriter(SortedLevelFile file, int level) {
 		this.file = file;
 		this.level = level;

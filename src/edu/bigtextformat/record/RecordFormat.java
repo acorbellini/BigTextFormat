@@ -71,7 +71,7 @@ public class RecordFormat extends BlockFormat {
 
 	}
 
-	private byte[] getData(String k, byte[] d) {
+	public byte[] getData(String k, byte[] d) {
 		int offset = 0;
 		for (int i = 0; i < header.size(); i++) {
 			if (!header.get(i).equals(k)) {

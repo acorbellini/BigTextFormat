@@ -2,16 +2,18 @@ package edu.bigtextformat.levels;
 
 public class DataBlockIterator {
 	int i = 0;
-	private DataBlock db;
+	private DataBlockImpl db;
 	byte[] k;
 	byte[] val;
 
-	public DataBlockIterator(DataBlock dataBlock) {
+	public DataBlockIterator(DataBlockImpl dataBlock) {
 		this.db = dataBlock;
+		advance();
+
 	}
 
 	public void advance() {
-		if (!hasNext()) {
+		if (i >= db.indexSize()) {
 			k = null;
 			val = null;
 			return;
@@ -30,6 +32,7 @@ public class DataBlockIterator {
 	}
 
 	public boolean hasNext() {
-		return i < db.indexSize();
+		return k != null;
+		// return i < db.indexSize();
 	}
 }

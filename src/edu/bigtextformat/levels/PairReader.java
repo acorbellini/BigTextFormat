@@ -11,24 +11,53 @@ public class PairReader {
 
 	public PairReader(LevelFile levelFile) throws Exception {
 		this.reader = levelFile.getReader();
+		advanceIt();
+		// if (reader.hasNext()) {
+		// curr = reader.next();
+		// advanceIt();
+		// } else
+		// curr = null;
+
 	}
 
-	public boolean hasNext() {
-		while (it == null || !it.hasNext()) {
-			if (!reader.hasNext())
-				return false;
-			else
-				it = reader.next().iterator();
+	private void advanceIt() {
+		while (reader.hasNext()) {
+			it = reader.next().iterator();
+			if (it.hasNext())
+				return;
 		}
-		return (it.hasNext());
+		it = null;
+	}
+
+	// while (it == null || !it.hasNext()) {
+	// if (reader.hasNext())
+	// it = reader.next().iterator();
+	// }
+	// if (!it.hasNext())
+	// it = null;
+	// }
+
+	public boolean hasNext() {
+		return it != null;
+
 	}
 
 	public void advance() {
-		if (!hasNext()) {
-			it = null;
-			return;
+		if(it!=null){
+			it.advance();
+			if(!it.hasNext())
+				advanceIt();
 		}
-		it.advance();
+		// if (!it.hasNext()) {
+		// advanceIt();
+		// if (it == null)
+		// return;
+		// }
+		// else{
+		// it.advance();
+		// if(!it.hasNext())
+		//
+		// }
 	}
 
 	public byte[] getKey() {

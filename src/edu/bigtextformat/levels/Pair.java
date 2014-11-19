@@ -10,7 +10,7 @@ public class Pair<T1, T2> {
 		this.setB(b);
 	}
 
-	public byte[] getA() {
+	public byte[] getKey() {
 		return a;
 	}
 

@@ -9,8 +9,8 @@ import edu.jlime.util.DataTypeUtils;
 
 public abstract class RawFile implements Closeable {
 
-	public static RawFile getChannelRawFile(String path, boolean trunc, boolean write)
-			throws Exception {
+	public static RawFile getChannelRawFile(String path, boolean trunc,
+			boolean write) throws Exception {
 		return new RawFileChannel(path, trunc, write);
 	}
 
@@ -49,5 +49,8 @@ public abstract class RawFile implements Closeable {
 	public abstract File getFile();
 
 	public abstract void delete() throws IOException;
+
+	public abstract void copy(RawFile orig, long from, int len, long pos)
+			throws IOException;
 
 }
