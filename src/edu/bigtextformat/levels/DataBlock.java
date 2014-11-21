@@ -1,6 +1,5 @@
 package edu.bigtextformat.levels;
 
-import edu.bigtextformat.block.Block;
 import edu.bigtextformat.block.BlockFile;
 import edu.bigtextformat.block.BlockFormat;
 
@@ -16,13 +15,7 @@ public interface DataBlock {
 
 	public abstract byte[] firstKey();
 
-	public abstract void setBlock(Block b);
-
-	public abstract Block getBlock();
-
-	public abstract long getPos();
-
-	public abstract int getLen();
+	public abstract Long getLen();
 
 	public abstract boolean contains(byte[] k, BlockFormat format);
 
@@ -38,5 +31,7 @@ public interface DataBlock {
 	public abstract BlockFile getBlockFile() throws Exception;
 
 	public abstract byte[] get(byte[] k, BlockFormat format);
+
+	public abstract Long getBlockPos();
 
 }

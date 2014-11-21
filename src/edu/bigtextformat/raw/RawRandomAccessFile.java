@@ -97,9 +97,9 @@ public class RawRandomAccessFile extends RawFile {
 	}
 
 	@Override
-	public void copy(RawFile orig, long from, int len, long pos) {
+	public void copy(RawFile orig, long from, long len, long pos) {
 		// TODO Auto-generated method stub
-		
+
 	}
 
 }

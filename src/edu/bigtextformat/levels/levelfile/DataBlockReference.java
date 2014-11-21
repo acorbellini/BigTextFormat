@@ -1,6 +1,5 @@
 package edu.bigtextformat.levels.levelfile;
 
-import edu.bigtextformat.block.Block;
 import edu.bigtextformat.block.BlockFile;
 import edu.bigtextformat.block.BlockFormat;
 import edu.bigtextformat.levels.DataBlock;
@@ -15,9 +14,9 @@ public class DataBlockReference implements DataBlock {
 	byte[] maxKey;
 	long pos;
 
-	private int len;
+	private Long len;
 
-	public DataBlockReference(LevelFile file, byte[] maxKey, long pos, int len) {
+	public DataBlockReference(LevelFile file, byte[] maxKey, long pos, long len) {
 		super();
 		this.file = file;
 		this.maxKey = maxKey;
@@ -64,14 +63,10 @@ public class DataBlockReference implements DataBlock {
 		return getDB().firstKey();
 	}
 
-	@Override
-	public void setBlock(Block b) {
-	}
-
-	@Override
-	public Block getBlock() {
-		return getDB().getBlock();
-	}
+	// @Override
+	// public Block getBlock() {
+	// return getDB().getBlock();
+	// }
 
 	@Override
 	public boolean contains(byte[] k, BlockFormat format) {
@@ -100,12 +95,7 @@ public class DataBlockReference implements DataBlock {
 	}
 
 	@Override
-	public long getPos() {
-		return pos;
-	}
-
-	@Override
-	public int getLen() {
+	public Long getLen() {
 		return len;
 	}
 
@@ -119,4 +109,8 @@ public class DataBlockReference implements DataBlock {
 		return getDB().get(k, format);
 	}
 
+	@Override
+	public Long getBlockPos() {
+		return pos;
+	}
 }

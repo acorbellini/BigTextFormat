@@ -26,14 +26,14 @@ class BlockFileIterator implements Iterator<Block> {
 			// } while (current.isDeleted());
 			return true;
 		} catch (Exception e) {
-			e.printStackTrace();
+			// e.printStackTrace();
+			return false;
 		}
-		return false;
 	}
 
 	@Override
 	public void remove() {
 		// TODO Auto-generated method stub
-		
+
 	}
 }

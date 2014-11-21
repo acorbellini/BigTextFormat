@@ -19,18 +19,26 @@ public class RawFileChannel extends RawFile {
 	private FileChannel f;
 	private Path p;
 
-	public RawFileChannel(String path, boolean trunc, boolean write)
-			throws IOException {
+	public RawFileChannel(String path, boolean trunc, boolean readOnly,
+			boolean appendOnly) throws IOException {
 		this.p = Paths.get(path);
 
 		Set<OpenOption> opts = new HashSet<>();
-		opts.add(StandardOpenOption.READ);
-		if (write)
+		if (appendOnly) {
+			opts.add(StandardOpenOption.CREATE);
 			opts.add(StandardOpenOption.WRITE);
+			opts.add(StandardOpenOption.APPEND);
+		} else {
+			opts.add(StandardOpenOption.READ);
+			if (!readOnly) {
+				opts.add(StandardOpenOption.CREATE);
+				opts.add(StandardOpenOption.WRITE);
+			}
+		}
 		if (trunc)
 			opts.add(StandardOpenOption.TRUNCATE_EXISTING);
-		opts.add(StandardOpenOption.CREATE);
-		opts.add(StandardOpenOption.SYNC);
+
+		// opts.add(StandardOpenOption.SYNC);
 
 		this.f = FileChannel.open(p, opts);
 		// String mode = "r";
@@ -103,7 +111,7 @@ public class RawFileChannel extends RawFile {
 	}
 
 	@Override
-	public synchronized void copy(RawFile orig, long from, int len, long pos)
+	public synchronized void copy(RawFile orig, long from, long len, long pos)
 			throws IOException {
 		FileChannel fc = ((RawFileChannel) orig).f;
 		f.position(pos);

@@ -15,6 +15,8 @@ import java.util.Random;
 
 public class LevelTest {
 
+	private static final boolean LOAD = true;
+
 	public static void main(String[] args) throws Exception {
 
 		// List<Integer> toAdd = Arrays.asList(new Integer[] { 5, 91, 13, 72,
@@ -137,59 +139,70 @@ public class LevelTest {
 		SortedLevelFile file = SortedLevelFile.open(
 				PATH,
 				new LevelOptions().setFormat(format).setMaxMemTablesWriting(5)
-						.setMemTableSize(4 * 1024 * 1024)
-						.setBaseSize(1024 * 1024).setMaxLevel0Files(150)
+						.setMemTableSize(32 * 1024 * 1024)
+						.setBaseSize(2 * 1024 * 1024).setMaxLevel0Files(5)
 						.setCompactLevel0Threshold(1).setMaxLevelFiles(20)
-						.setMaxBlockSize(32 * 1024)
+						.setMaxBlockSize(64 * 1024)
 						.setCompressed(CompressionType.SNAPPY.getComp()));
+		if (LOAD) {
+			toAdd.shuffle(new Random(System.currentTimeMillis()));
 
-		toAdd.shuffle(new Random(System.currentTimeMillis()));
+			long init = System.currentTimeMillis();
+			TIntIterator it = toAdd.iterator();
+			int rawSize = 0;
+			int cont = 0;
+			while (it.hasNext()) {
+				if (cont++ % 100000 == 0)
+					System.out.println("Inserted " + cont);
+				byte[] byteArray = format.newRecord().set("k", it.next())
+				// .set("k2", -i)
+						.toByteArray();
+				byte[] bytes = "Hola!".getBytes();
+				file.put(byteArray, bytes);
 
-		long init = System.currentTimeMillis();
-		TIntIterator it = toAdd.iterator();
-		int rawSize = 0;
-		int cont = 0;
-		while (it.hasNext()) {
-			if (cont++ % 10000 == 0)
-				System.out.println("Inserted " + cont);
-			byte[] byteArray = format.newRecord().set("k", it.next())
-			// .set("k2", -i)
-					.toByteArray();
-			byte[] bytes = "Hola!".getBytes();
-			file.put(byteArray, bytes);
+				rawSize += byteArray.length + bytes.length;
+			}
+			System.out.println("Raw Size " + rawSize);
 
-			rawSize += byteArray.length + bytes.length;
+			System.out.println(System.currentTimeMillis() - init);
+
+			// System.out.println(file.print());
+
+			System.out.println("Compacting...");
+			long initCompact = System.currentTimeMillis();
+			file.compact();
+			System.out.println("Compact time: "
+					+ (System.currentTimeMillis() - initCompact));
+
+			// System.out.println(file.print());
+
+			System.out.println("Closing...");
+			file.close();
+
+			System.out.println("Reopening...");
+			file = SortedLevelFile.open(PATH, null);
 		}
-		System.out.println("Raw Size " + rawSize);
-
-		System.out.println(System.currentTimeMillis() - init);
-
-		// System.out.println(file.print());
-
-		System.out.println("Compacting...");
-
-		file.compact();
-
-		// System.out.println(file.print());
+		System.out.println("Querying...");
 
 		toAdd.sort();
-		System.out.println("Closing...");
-		file.close();
 
-		System.out.println("Reopening...");
-		file = SortedLevelFile.open(PATH, null);
-		System.out.println("Querying...");
-		init = System.currentTimeMillis();
-		it = toAdd.iterator();
-		while (it.hasNext()) {
-			int integer = it.next();
+		int contQuery = 0;
+
+		long queryInit = System.currentTimeMillis();
+		TIntIterator itQuery = toAdd.iterator();
+		while (itQuery.hasNext()) {
+			int integer = itQuery.next();
+			if (contQuery % 100000 == 0)
+				System.out.println("Current query count " + contQuery);
 			if (!file.contains(DataTypeUtils.intToByteArray(integer))) {
 				// System.out.println(toAdd);
 				// System.out.println(file.print());
 				throw new Exception("Not inserted! " + integer);
 			}
+			contQuery++;
 		}
-		System.out.println(System.currentTimeMillis() - init);
+		System.out.println("Query Time "
+				+ (System.currentTimeMillis() - queryInit));
 
 		System.out.println("Closing...");
 		file.close();

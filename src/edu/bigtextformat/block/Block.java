@@ -330,8 +330,8 @@ public class Block implements DataType<Block> {
 		return nextBlockPos;
 	}
 
-	public int size() {
-		return (int) (getNextBlockPos() - getPos());
+	public long size() {
+		return getNextBlockPos() - getPos();
 	}
 
 	public static void main(String[] args) {

@@ -2,7 +2,6 @@ package edu.bigtextformat.levels;
 
 import java.util.Arrays;
 
-import edu.bigtextformat.block.Block;
 import edu.bigtextformat.block.BlockFile;
 import edu.bigtextformat.block.BlockFormat;
 import edu.bigtextformat.record.DataType;
@@ -18,9 +17,12 @@ public class DataBlockImpl implements DataType<DataBlockImpl>, DataBlock {
 	byte[] v_list;
 	int[] v_index;
 
-	private Block b;
+	// private Block b;
+	Long blockPos;
 
 	private int size = 0;
+	private Long blockSize;
+	private BlockFile bf;
 
 	public DataBlockImpl() {
 	}
@@ -133,16 +135,8 @@ public class DataBlockImpl implements DataType<DataBlockImpl>, DataBlock {
 		return getKey(0);
 	}
 
-	/*
-	 * (non-Javadoc)
-	 * 
-	 * @see
-	 * edu.bigtextformat.levels.DataBlock#setBlock(edu.bigtextformat.block.Block
-	 * )
-	 */
-	@Override
-	public void setBlock(Block b) {
-		this.b = b;
+	public void setBlockPos(Long pos) {
+		this.blockPos = pos;
 	}
 
 	/*
@@ -150,10 +144,10 @@ public class DataBlockImpl implements DataType<DataBlockImpl>, DataBlock {
 	 * 
 	 * @see edu.bigtextformat.levels.DataBlock#getBlock()
 	 */
-	@Override
-	public Block getBlock() {
-		return b;
-	}
+	// @Override
+	// public Block getBlock() {
+	// return b;
+	// }
 
 	/*
 	 * (non-Javadoc)
@@ -260,18 +254,18 @@ public class DataBlockImpl implements DataType<DataBlockImpl>, DataBlock {
 	}
 
 	@Override
-	public long getPos() {
-		return getBlock().getPos();
+	public Long getLen() {
+		return blockSize;
 	}
 
-	@Override
-	public int getLen() {
-		return getBlock().size();
+	public void setBlockSize(Long len) {
+		this.blockSize = len;
+
 	}
 
 	@Override
 	public BlockFile getBlockFile() {
-		return getBlock().getFile();
+		return bf;
 	}
 
 	@Override
@@ -281,4 +275,14 @@ public class DataBlockImpl implements DataType<DataBlockImpl>, DataBlock {
 			return null;
 		return getValue(pos);
 	}
+
+	@Override
+	public Long getBlockPos() {
+		return blockPos;
+	}
+
+	public void setBlockFile(BlockFile file) {
+		this.bf = file;
+	}
+
 }

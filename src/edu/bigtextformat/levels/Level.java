@@ -2,10 +2,15 @@ package edu.bigtextformat.levels;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import edu.bigtextformat.levels.levelfile.LevelFile;
 
@@ -14,17 +19,29 @@ public class Level implements Iterable<LevelFile> {
 	private SortedLevelFile file;
 	private int level;
 
+	private ReadWriteLock lock = new ReentrantReadWriteLock();
+	private AtomicInteger count = new AtomicInteger(0);
+
 	//
-	// private byte[] minKey;
-	// private byte[] maxKey;
+	private byte[] minKey;
+	private byte[] maxKey;
+
+	public SortedLevelFile getFile() {
+		return file;
+	}
 
 	public Level(SortedLevelFile sortedLevelFile, int level) {
 		this.file = sortedLevelFile;
 		this.level = level;
 	}
 
-	public synchronized int size() {
-		return files.size();
+	public int size() {
+		lock.readLock().lock();
+		try {
+			return files.size();
+		} finally {
+			lock.readLock().unlock();
+		}
 	}
 
 	// public static int search(byte[] minKey, List<LevelFile> keys,
@@ -54,33 +71,62 @@ public class Level implements Iterable<LevelFile> {
 	// return cont;
 	// }
 
-	public synchronized void add(LevelFile fl) throws Exception {
-		// if (level == 0)
-		files.add(fl);
-		// else {
-		// int pos = search(fl.getMinKey(), files, getOpts().format);
-		// if (pos < 0)
-		// pos = -(pos + 1);
-		// files.add(pos, fl);
-		//
-		// updateMinAndMax();
-		// }
-		if (level == 0 && (size() >= getOpts().compactLevel0Threshold))
-			file.getCompactor().compact(level);
-		// file.getCompactor().setChanged();
-		else if (size() > getOpts().maxLevelFiles)
-			file.getCompactor().compact(level);
-		// file.getCompactor().setChanged();
+	public void add(LevelFile fl) throws Exception {
+
+		file.getManifest().put(fl.getLevel(), fl.getCont(),
+				fl.getFile().getRawFile().getFile().getName(), fl.getMinKey(),
+				fl.getMaxKey());
+
+		lock.writeLock().lock();
+		try {
+			if (fl.getCont() >= count.get())
+				count.set(fl.getCont() + 1);
+
+			// if (level == 0)
+			int pos = Collections.binarySearch(files, fl,
+					new Comparator<LevelFile>() {
+						@Override
+						public int compare(LevelFile o1, LevelFile o2) {
+							try {
+								return getOpts().format.compare(o1.getMaxKey(),
+										o2.getMaxKey());
+							} catch (Exception e) {
+								e.printStackTrace();
+							}
+							return 0;
+						}
+
+					});
+			if (pos < 0)
+				pos = -(pos + 1);
+			files.add(pos, fl);
+			// else {
+			// int pos = search(fl.getMinKey(), files, getOpts().format);
+			// if (pos < 0)
+			// pos = -(pos + 1);
+			// files.add(pos, fl);
+			//
+			updateMinAndMax();
+			// }
+			if (level == 0 && (size() >= getOpts().compactLevel0Threshold))
+				file.getCompactor().compact(level);
+			// file.getCompactor().setChanged();
+			else if (size() > getOpts().maxLevelFiles)
+				file.getCompactor().compact(level);
+			// file.getCompactor().setChanged();
+		} finally {
+			lock.writeLock().unlock();
+		}
 	}
 
 	private void updateMinAndMax() throws Exception {
-		// if (files.isEmpty()) {
-		// minKey = null;
-		// maxKey = null;
-		// } else {
-		// minKey = files.get(0).getMinKey();
-		// maxKey = files.get(files.size() - 1).getMaxKey();
-		// }
+		if (files.isEmpty()) {
+			minKey = null;
+			maxKey = null;
+		} else {
+			minKey = files.get(0).getMinKey();
+			maxKey = files.get(files.size() - 1).getMaxKey();
+		}
 	}
 
 	@Override
@@ -88,14 +134,27 @@ public class Level implements Iterable<LevelFile> {
 		return files.iterator();
 	}
 
-	public synchronized void remove(LevelFile from) throws Exception {
-		files.remove(from);
-		updateMinAndMax();
-		notifyAll();
+	public void remove(LevelFile from) throws Exception {
+		lock.writeLock().lock();
+		try {
+			files.remove(from);
+			updateMinAndMax();
+			synchronized (this) {
+				notifyAll();
+			}
+		} finally {
+			lock.writeLock().unlock();
+		}
 	}
 
-	public synchronized LevelFile get(int i) {
-		return files.get(i);
+	public LevelFile get(int i) {
+		lock.readLock().lock();
+		try {
+			return files.get(i);
+		} finally {
+			lock.readLock().unlock();
+		}
+
 	}
 
 	public int level() {
@@ -106,17 +165,23 @@ public class Level implements Iterable<LevelFile> {
 		return file.getOpts();
 	}
 
-	public synchronized Set<LevelFile> intersect(byte[] minKey, byte[] maxKey)
+	public Set<LevelFile> intersect(byte[] minKey, byte[] maxKey)
 			throws Exception {
-		Set<LevelFile> found = new HashSet<>();
-		for (LevelFile levelFile : files) {
-			if (getOpts().format.compare(levelFile.getMinKey(), maxKey) > 0
-					|| getOpts().format.compare(levelFile.getMaxKey(), minKey) < 0)
-				;
-			else
-				found.add(levelFile);
+		lock.readLock().lock();
+		try {
+			Set<LevelFile> found = new HashSet<>();
+			for (LevelFile levelFile : files) {
+				if (getOpts().format.compare(levelFile.getMinKey(), maxKey) > 0
+						|| getOpts().format.compare(levelFile.getMaxKey(),
+								minKey) < 0)
+					;
+				else
+					found.add(levelFile);
+			}
+			return found;
+		} finally {
+			lock.readLock().unlock();
 		}
-		return found;
 	}
 
 	public File getCwd() {
@@ -124,12 +189,23 @@ public class Level implements Iterable<LevelFile> {
 	}
 
 	public int getLastLevelIndex() {
-		return file.getLastLevelIndex(level);
+		return count.getAndIncrement();
 	}
 
-	public synchronized void delete(LevelFile file) throws Exception {
-		file.delete();
+	public void delete(LevelFile file) throws Exception {
+		// lock.writeLock().lock();
+		// try {
 		remove(file);
+		try {
+			file.delete();
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		// } finally {
+		// lock.writeLock().unlock();
+		// }
+
 	}
 
 	public void moveTo(LevelFile from, Level to) throws Exception {
@@ -140,38 +216,50 @@ public class Level implements Iterable<LevelFile> {
 	}
 
 	public boolean contains(byte[] k) throws Exception {
-		List<LevelFile> snapshot = null;
-		synchronized (this) {
+		// List<LevelFile> snapshot = null;
+		lock.readLock().lock();
+
+		try {
 			if (files.isEmpty())
 				return false;
-			// if (level > 0
-			// && (getOpts().format.compare(k, minKey) < 0 || getOpts().format
-			// .compare(k, maxKey) > 0))
-			// return false;
-			snapshot = new ArrayList<LevelFile>(files);
-		}
-		for (LevelFile levelFile : snapshot) {
-			try {
-				if (levelFile.contains(k, getOpts().format))
-					return true;
-			} catch (Exception e) {
-				e.printStackTrace();
+			// snapshot = new ArrayList<LevelFile>(files);
+			//
+			// if (level > 0)
+			// LevelMerger.sortByKey(snapshot, getOpts().format);
+			for (LevelFile levelFile : files) {
+				try {
+					if (levelFile.contains(k, getOpts().format))
+						return true;
+					else if (level > 0
+							&& getOpts().format.compare(k,
+									levelFile.getMinKey()) < 0) {
+						return false;
+					}
+				} catch (Exception e) {
+					e.printStackTrace();
+				}
 			}
+			return false;
+		} finally {
+			lock.readLock().unlock();
 		}
-		return false;
 	}
 
 	public byte[] get(byte[] k) {
 		List<LevelFile> snapshot = null;
-		synchronized (this) {
+		lock.readLock().lock();
+		try {
 			if (files.isEmpty())
 				return null;
-			// if (level > 0
-			// && (getOpts().format.compare(k, minKey) < 0 || getOpts().format
-			// .compare(k, maxKey) > 0))
-			// return null;
+			if (level > 0
+					&& (getOpts().format.compare(k, minKey) < 0 || getOpts().format
+							.compare(k, maxKey) > 0))
+				return null;
 			snapshot = new ArrayList<LevelFile>(files);
+		} finally {
+			lock.readLock().unlock();
 		}
+
 		byte[] ret = null;
 		for (LevelFile levelFile : snapshot) {
 			try {
@@ -183,5 +271,36 @@ public class Level implements Iterable<LevelFile> {
 			}
 		}
 		return null;
+	}
+
+	public void close() throws Exception {
+		for (LevelFile levelFile : files) {
+			levelFile.close();
+		}
+	}
+
+	public int intersectSize(byte[] min, byte[] max) throws Exception {
+		lock.readLock().lock();
+		try {
+			if (files.isEmpty())
+				return 0;
+
+			if (getOpts().format.compare(max, minKey) < 0
+					|| getOpts().format.compare(min, maxKey) > 0)
+				return 0;
+
+			int cont = 0;
+			for (LevelFile levelFile : files) {
+				if (level > 0
+						&& getOpts().format.compare(min, levelFile.getMaxKey()) > 0)
+					return cont;
+				else if (!(getOpts().format.compare(levelFile.getMinKey(), max) < 0 || getOpts().format
+						.compare(min, levelFile.getMaxKey()) > 0))
+					cont++;
+			}
+			return cont;
+		} finally {
+			lock.readLock().unlock();
+		}
 	}
 }

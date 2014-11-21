@@ -1,48 +1,34 @@
 package edu.bigtextformat.levels;
 
-import java.io.IOException;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
 
-import edu.bigtextformat.block.BlockFile;
+import edu.bigtextformat.block.Block;
 import edu.bigtextformat.block.BlockFormat;
+import edu.bigtextformat.record.FormatType;
+import edu.bigtextformat.record.FormatTypes;
+import edu.bigtextformat.record.RecordFormat;
 import edu.jlime.util.DataTypeUtils;
 
-public class Memtable {
-
-	// List<Operation> table = new ArrayList<>();
+public class MemtableInMemory {
 
 	TreeMap<byte[], byte[]> data;
+	private Block b;
 
 	private int size = 0;
-
-	private BlockFile log;
-
-	int logCount = 0;
-
-	private String path;
-
 	private BlockFormat format;
 
-	public Memtable(String path, BlockFormat format) throws Exception {
-		this.path = path;
-		initLog();
+	public MemtableInMemory(BlockFormat format) {
 		this.format = format;
 		data = new TreeMap<byte[], byte[]>(format);
 	}
 
-	private void initLog() throws Exception {
-		log = BlockFile.appendOnly(path + "/LOG." + logCount++,
-				DataTypeUtils.byteArrayToLong("MANIFEST".getBytes()));
-	}
-
-	public synchronized void put(byte[] k, byte[] val) throws Exception {
-		Operation e = new Operation(Operations.PUT.getId(), k, val);
-		// table.add(e);
-		byte[] opAsBytes = e.toByteArray();
-		log.newFixedBlock(opAsBytes);
-		size += opAsBytes.length;
+	public synchronized void insertOrdered(byte[] k, byte[] val) {
+		data.put(k, val);
+		size += k.length + val.length + 4 + 4;
 	}
 
 	public int size() {
@@ -50,17 +36,22 @@ public class Memtable {
 	}
 
 	public byte[] lastKey() {
-		// return null;
 		return data.lastKey();
 	}
 
 	public byte[] firstKey() {
-		// return null;
 		return data.firstKey();
 	}
 
+	public void setBlock(Block b) {
+		this.b = b;
+	}
+
+	public Block getBlock() {
+		return b;
+	}
+
 	public boolean contains(byte[] k) {
-		// return false;
 		return data.containsKey(k);
 	}
 
@@ -73,24 +64,34 @@ public class Memtable {
 		return builder.toString();
 	}
 
-	public void closeLog() throws IOException {
-		log.close();
-	}
-
-	public String getLogName() {
-		return log.getRawFile().getFile().getName();
-	}
-
-	public void clear() throws Exception {
-
-		initLog();
+	public void clear() {
 		data.clear();
 		size = 0;
 	}
 
+	public static void main(String[] args) {
+
+		List<Integer> toAdd = Arrays.asList(new Integer[] { 4, 5, 6, 1, 3, 0,
+				2, 14, 56, 23 });
+
+		BlockFormat format = RecordFormat.create(new String[] { "nada" },
+				new FormatType[] { FormatTypes.INTEGER.getType() },
+				new String[] { "nada" });
+		MemtableInMemory table = new MemtableInMemory(format);
+		for (Integer integer : toAdd) {
+			System.out.println(table.print());
+			System.err.println("insert " + integer);
+			table.insertOrdered(DataTypeUtils.intToByteArray(integer),
+					new byte[] {});
+		}
+		System.out.println(table.print());
+		// for (byte[] integer : table.keys) {
+		// System.out.println(DataTypeUtils.byteArrayToInt(integer));
+		// }
+	}
+
 	public Pair<byte[], byte[]> getFirstIntersect(byte[] from,
 			boolean inclFrom, byte[] to, boolean inclTo, BlockFormat format) {
-		// return null;
 		// int cont = Search.search(from, keys, format);
 		// if (cont < 0)
 		// cont = -(cont + 1);

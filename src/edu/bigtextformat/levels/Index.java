@@ -1,6 +1,7 @@
 package edu.bigtextformat.levels;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 
@@ -12,6 +13,9 @@ import edu.jlime.util.ByteBuffer;
 public class Index implements DataType<Index> {
 	List<byte[]> keys = new ArrayList<>();
 	List<Long> blocks = new ArrayList<>();
+
+	List<Long> sortedBlocks = new ArrayList<>();
+
 	byte[] minKey = null;
 	byte[] maxKey = null;
 	private BlockFormat format;
@@ -48,6 +52,23 @@ public class Index implements DataType<Index> {
 
 		keys.add(pos, k);
 		blocks.add(pos, blockPos);
+		int sorted = Collections.binarySearch(sortedBlocks, blockPos);
+		if (sorted < 0)
+			sorted = -(sorted + 1);
+		sortedBlocks.add(sorted, blockPos);
+		validate(format);
+	}
+
+	private void validate(BlockFormat format) {
+		for (int i = 0; i < keys.size(); i++) {
+			if (i - 1 > 0 && format.compare(keys.get(i - 1), keys.get(i)) > 0) {
+				System.out.println("error al agregar clave");
+			}
+
+			if (i - 1 > 0 && blocks.get(i - 1) > blocks.get(i)) {
+				System.out.println("error al agregar bloque de clave");
+			}
+		}
 	}
 
 	public byte[] toByteArray() {
@@ -64,16 +85,14 @@ public class Index implements DataType<Index> {
 		ByteBuffer buff = new ByteBuffer(data);
 		keys = buff.getByteArrayList();
 		blocks = buff.getLongList();
+		sortedBlocks.addAll(blocks);
+		Collections.sort(sortedBlocks);
 		minKey = buff.getByteArray();
 		maxKey = buff.getByteArray();
 		return this;
 	}
 
 	public long get(byte[] k) {
-		if (minKey != null && maxKey != null) {
-			if (format.compare(k, minKey) < 0 || format.compare(k, maxKey) > 0)
-				return -1;
-		}
 
 		int cont = Search.search(k, keys, format);
 		if (cont < 0) {
@@ -109,5 +128,14 @@ public class Index implements DataType<Index> {
 
 	public List<Long> getBlocks() {
 		return blocks;
+	}
+
+	public long getNextBlockTo(long pos) {
+		int loc = Collections.binarySearch(sortedBlocks, pos);
+		if (loc >= 0 && loc + 1 < sortedBlocks.size()) {
+			return sortedBlocks.get(loc + 1);
+		} else
+			return -1;
+
 	}
 }

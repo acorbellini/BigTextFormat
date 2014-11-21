@@ -1,7 +1,6 @@
 package edu.bigtextformat.levels.levelfile;
 
 import java.io.File;
-import java.lang.ref.SoftReference;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Arrays;
@@ -14,6 +13,7 @@ import com.google.common.cache.CacheBuilder;
 
 import edu.bigtextformat.block.Block;
 import edu.bigtextformat.block.BlockFile;
+import edu.bigtextformat.block.BlockFileOptions;
 import edu.bigtextformat.block.BlockFormat;
 import edu.bigtextformat.levels.DataBlock;
 import edu.bigtextformat.levels.DataBlockImpl;
@@ -25,20 +25,24 @@ import edu.bigtextformat.levels.SortedLevelFile;
 import edu.jlime.util.DataTypeUtils;
 
 public class LevelFile {
-	private static final long MAX_CACHE_SIZE = 1000;
+	private static final long MAX_CACHE_SIZE = 50;
 
 	private static Cache<DataBlockID, DataBlockImpl> cache = CacheBuilder
 			.newBuilder().maximumSize(MAX_CACHE_SIZE)
-			.expireAfterAccess(30, TimeUnit.SECONDS).softValues().build();
+			.expireAfterAccess(5, TimeUnit.SECONDS).softValues().build();
 
 	private volatile BlockFile file = null;
 	private volatile LevelOptions opts = null;
-	private volatile SoftReference<Index> index;
+	private volatile Index index;
 
 	private int cont;
 	private int level;
 	private String dir;
 	private String path;
+
+	private byte[] minKey;
+
+	private byte[] maxKey;
 
 	private boolean commited = false;
 
@@ -48,11 +52,15 @@ public class LevelFile {
 
 	private UUID id = UUID.randomUUID();
 
-	private LevelFile(File f, int level, int cont) {
+	private boolean merging;
+
+	private LevelFile(File f, int level, int cont, byte[] minKey, byte[] maxKey) {
 		this.dir = f.getParent();
 		this.path = f.getPath();
 		this.level = level;
 		this.cont = cont;
+		this.minKey = minKey;
+		this.maxKey = maxKey;
 	}
 
 	public void put(DataBlock dataBlock) throws Exception {
@@ -60,20 +68,18 @@ public class LevelFile {
 			throw new Exception("LevelFile is read only");
 
 		byte[] firstKey = dataBlock.firstKey();
-		if (getIndex().getMinKey() == null
-				|| getOpts().format.compare(getIndex().getMinKey(), firstKey) > 0)
-			getIndex().setMinKey(firstKey);
-
+		if (minKey == null || getOpts().format.compare(minKey, firstKey) > 0)
+			this.minKey = firstKey;
 		byte[] lastKey = dataBlock.lastKey();
-		if (getIndex().getMaxKey() == null
-				|| getOpts().format.compare(getIndex().getMaxKey(), lastKey) < 0)
-			getIndex().setMaxKey(lastKey);
+		if (maxKey == null || getOpts().format.compare(maxKey, lastKey) < 0) {
+			this.maxKey = lastKey;
+		}
 
 		long pos = 0;
 
-		if (dataBlock.getBlock() != null)
+		if (dataBlock.getBlockPos() != null)
 			pos = getFile().appendBlock(dataBlock.getBlockFile(),
-					dataBlock.getPos(), dataBlock.getLen());
+					dataBlock.getBlockPos(), dataBlock.getLen());
 		else {
 			Block b = getFile().newFixedBlock(dataBlock.toByteArray());
 			pos = b.getPos();
@@ -82,6 +88,8 @@ public class LevelFile {
 	}
 
 	public void commit() throws Exception {
+		getIndex().setMinKey(minKey);
+		getIndex().setMaxKey(maxKey);
 		getFile().newUncompressedFixedBlock(getIndex().toByteArray());
 		getFile().close();
 		fixedIndex = null;
@@ -114,7 +122,7 @@ public class LevelFile {
 		String path = SortedLevelFile.getTempPath(dir, level, cont);
 		BlockFile bf = createBlockFile(path, opts);
 		bf.getHeader().putData("opts", opts.toByteArray());
-		LevelFile lf = new LevelFile(new File(path), level, cont);
+		LevelFile lf = new LevelFile(new File(path), level, cont, null, null);
 		lf.setFile(bf);
 		lf.setOpts(opts);
 		lf.setIndex(new Index(opts.format));
@@ -128,9 +136,14 @@ public class LevelFile {
 
 	private static BlockFile createBlockFile(String path, LevelOptions opts)
 			throws Exception {
-		return BlockFile.create(path, 512, 512,
-				DataTypeUtils.byteArrayToLong("SSTTABLE".getBytes()),
-				opts.comp, true);
+		return BlockFile.create(
+				path,
+				new BlockFileOptions()
+						.setHeaderSize(512)
+						.setMinSize(512)
+						.setMagic(
+								DataTypeUtils.byteArrayToLong("SSTTABLE"
+										.getBytes())).setComp(opts.comp));
 	}
 
 	public static BlockFile openBlockFile(String path) throws Exception {
@@ -151,11 +164,19 @@ public class LevelFile {
 	}
 
 	public byte[] getMinKey() throws Exception {
-		return getIndex().getMinKey();
+		if (minKey != null)
+			return minKey;
+		else
+			minKey = getIndex().getMinKey();
+		return minKey;
 	}
 
 	public byte[] getMaxKey() throws Exception {
-		return getIndex().getMaxKey();
+		if (maxKey != null)
+			return maxKey;
+		else
+			maxKey = getIndex().getMaxKey();
+		return maxKey;
 	}
 
 	public void moveTo(int i, int cont) throws Exception {
@@ -192,7 +213,9 @@ public class LevelFile {
 																	// position...
 						return null;
 					block = new DataBlockImpl().fromByteArray(b.payload());
-					block.setBlock(b);
+					block.setBlockFile(getFile());
+					block.setBlockPos(b.getPos());
+					block.setBlockSize(b.size());
 					cache.put(DataBlockID.create(id, b.getPos()), block);
 				}
 			}
@@ -210,6 +233,13 @@ public class LevelFile {
 			if (deleted)
 				return false;
 		}
+
+		if (getMinKey() != null && getMaxKey() != null) {
+			if (format.compare(k, getMinKey()) < 0
+					|| format.compare(k, getMaxKey()) > 0)
+				return false;
+		}
+
 		long pos = getIndex().get(k);
 		if (pos < 0)
 			return false;
@@ -288,29 +318,36 @@ public class LevelFile {
 		return null;
 	}
 
-	public static LevelFile open(File f) throws Exception {
-
-		int level = Integer.valueOf(f.getName().substring(0,
-				f.getName().indexOf("-")));
-		int cont = Integer.valueOf(f.getName().substring(
-				f.getName().indexOf("-") + 1, f.getName().indexOf(".")));
-
-		// BlockFile bf = openBlockFile(f.getPath(), false);
-		//
-		// LevelOptions opts = new LevelOptions().fromByteArray(bf.getHeader()
-		// .get("opts"));
-		//
-		// Index i = new Index(opts.format).fromByteArray(bf.getLastBlock()
-		// .payload());
-
-		return new LevelFile(f, level, cont);
-	}
+	// public static LevelFile open(File f) throws Exception {
+	//
+	// int level = Integer.valueOf(f.getName().substring(0,
+	// f.getName().indexOf("-")));
+	// int cont = Integer.valueOf(f.getName().substring(
+	// f.getName().indexOf("-") + 1, f.getName().indexOf(".")));
+	//
+	// // BlockFile bf = openBlockFile(f.getPath(), false);
+	// //
+	// // LevelOptions opts = new LevelOptions().fromByteArray(bf.getHeader()
+	// // .get("opts"));
+	// //
+	// // Index i = new Index(opts.format).fromByteArray(bf.getLastBlock()
+	// // .payload());
+	//
+	// return new LevelFile(f, level, cont);
+	// }
 
 	public byte[] get(byte[] k, BlockFormat format) throws Exception {
 		synchronized (this) {
 			if (deleted)
 				return null;
 		}
+
+		if (getMinKey() != null && getMaxKey() != null) {
+			if (format.compare(k, getMinKey()) < 0
+					|| format.compare(k, getMaxKey()) > 0)
+				return null;
+		}
+
 		long pos = getIndex().get(k);
 		if (pos < 0)
 			return null;
@@ -337,16 +374,21 @@ public class LevelFile {
 		if (fixedIndex != null)
 			return fixedIndex;
 
-		if (index == null || index.get() == null) {
+		if (index == null) {
+			// || index.get() == null) {
 			synchronized (this) {
-				if (index == null || index.get() == null) {
-					Index i = new Index(getOpts().format)
-							.fromByteArray(getFile().getLastBlock().payload());
-					index = new SoftReference<Index>(i);
+				if (index == null) {
+					// || index.get() == null) {
+					// Index i = new Index(getOpts().format)
+					// .fromByteArray(getFile().getLastBlock().payload());
+					// index = new SoftReference<Index>(i);
+					index = new Index(getOpts().format).fromByteArray(getFile()
+							.getLastBlock().payload());
 				}
 			}
 		}
-		return index.get();
+		return index;
+		// .get();
 	}
 
 	public LevelOptions getOpts() throws Exception {
@@ -364,5 +406,30 @@ public class LevelFile {
 
 	public void setOpts(LevelOptions opts) {
 		this.opts = opts;
+	}
+
+	public static LevelFile open(int level, int cont, String levelFileName,
+			byte[] minKey, byte[] maxKey) {
+		return new LevelFile(new File(levelFileName), level, cont, minKey,
+				maxKey);
+	}
+
+	public String getPath() {
+		return path;
+	}
+
+	public synchronized boolean isMerging() {
+		return merging;
+	}
+
+	public synchronized boolean setMerging(int level) {
+		if (merging || this.level != level)
+			return false;
+		this.merging = true;
+		return true;
+	}
+
+	public synchronized void unSetMerging() {
+		this.merging = false;
 	}
 }

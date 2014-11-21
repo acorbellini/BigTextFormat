@@ -8,7 +8,7 @@ import edu.bigtextformat.levels.Level;
 import edu.bigtextformat.levels.levelfile.LevelFile;
 import edu.bigtextformat.levels.levelfile.LevelFileWriter;
 
-public class CompactWriterV2 {
+public class CompactWriterV2 implements Writer {
 	List<LevelFile> temps = new ArrayList<>();
 	LevelFile curr = null;
 	LevelFileWriter currWriter = null;
@@ -26,7 +26,7 @@ public class CompactWriterV2 {
 		// }
 		checkNewFile();
 		currWriter.add(dataBlock);
-		checkSize();
+		check();
 	}
 
 	private void checkNewFile() throws Exception {
@@ -38,25 +38,35 @@ public class CompactWriterV2 {
 		}
 	}
 
-	private void checkSize() throws Exception {
-		if (curr.size() > Math.min(level.getOpts().maxSize,
+	private void check() throws Exception {
+		float min = Math.min(level.getOpts().maxSize,
 				((level.level() / (float) level.getOpts().sizeModifier) + 1)
-						* level.getOpts().baseSize)) {
+						* level.getOpts().baseSize);
+		if (curr.size() > min
+				|| (level.level() > 0 && curr.getMinKey() != null && level
+						.getFile().getLevel(level.level() + 1)
+						.intersectSize(curr.getMinKey(), curr.getMaxKey()) >= level
+						.getOpts().intersectSplit)) {
 			flush();
 		}
 	}
 
 	private void flush() throws Exception {
+		if (curr == null)
+			return;
 		currWriter.close();
 		curr.commit();
+		// curr.persist();
+		// level.add(curr);
 		curr = null;
 	}
 
 	public void persist() throws Exception {
-		if (curr != null) {
-			currWriter.close();
-			curr.commit();
-		}
+		// if (curr != null) {
+		flush();
+		// currWriter.close();
+		// curr.commit();
+		// }
 		for (LevelFile levelFile : temps) {
 			levelFile.persist();
 			level.add(levelFile);
@@ -66,6 +76,6 @@ public class CompactWriterV2 {
 	public void add(byte[] k, byte[] v) throws Exception {
 		checkNewFile();
 		currWriter.add(k, v);
-		checkSize();
+		check();
 	}
 }

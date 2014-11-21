@@ -9,7 +9,7 @@ import edu.jlime.util.ByteBuffer;
 
 public class Header implements DataType<Header> {
 	Block b;
-	private long fsize;
+	private long fsize = 0;
 	Map<String, byte[]> data = new HashMap<String, byte[]>();
 
 	private Header(Block b, long fsize, Map<String, byte[]> data) {
@@ -83,8 +83,12 @@ public class Header implements DataType<Header> {
 		}
 	}
 
-	public int size() {
-		return b.size();
+	public long size() {
+		return b != null ? b.size() : 0;
 
+	}
+
+	public static Header emptyHeader() {
+		return new Header(null);
 	}
 }

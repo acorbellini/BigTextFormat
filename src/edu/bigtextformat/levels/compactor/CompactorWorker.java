@@ -1,6 +1,7 @@
 package edu.bigtextformat.levels.compactor;
 
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Set;
 
 import edu.bigtextformat.levels.Level;
@@ -36,32 +37,41 @@ public class CompactorWorker implements Runnable {
 			Level l = file.getLevel(level);
 			if (l == null)
 				return false;
-			if (l.level() == 0 && checkLevel0Conditions(l)) {
+			if ((l.level() == 0 && checkLevel0Conditions(l))
+					|| (l.level() > 0 && checkLevelConditions(l))) {
 				// System.out.println(file.print());
 				// LevelFile from = LevelMerger.shrinkLevel0(l);
 				// System.out.println(file.print());
 				LevelFile first = l.get(0);
-				Set<LevelFile> from = l.intersect(first.getMinKey(),
-						first.getMaxKey());
-
-				Level next = file.getLevel(1);
-				synchronized (next) {
-					LevelMerger.merge(from, l, next);
+				Set<LevelFile> from = null;
+				if (level == 0)
+					from = l.intersect(first.getMinKey(), first.getMaxKey());
+				else {
+					from = new HashSet<>();
+					from.add(first);
 				}
-				// System.out.println(file.print());
-				return true;
-			} else if (l.level() > 0 && checkLevelConditions(l)) {
-				Level next = file.getLevel(level + 1);
-				synchronized (l) {
-					LevelFile from = LevelMerger.shrink(l);
-					// LevelFile from = l.get(0);
-					HashSet<LevelFile> fromSet = new HashSet<>();
-					fromSet.add(from);
-
-					synchronized (next) {
-						LevelMerger.merge(fromSet, l, next);
+				// from.add(first);
+				// for (int i = 0; from.size() < file.getOpts().minMergeElements
+				// && i < l.size(); i++) {
+				// from.add(l.get(i));
+				// }
+				Iterator<LevelFile> it = from.iterator();
+				while (it.hasNext()) {
+					LevelFile levelFile = (LevelFile) it.next();
+					boolean res = levelFile.setMerging(level);
+					if (!res) {
+						it.remove();
 					}
 				}
+
+				if (from.isEmpty())
+					return false;
+
+				Level next = file.getLevel(level + 1);
+				LevelMerger.merge(from, l, next);
+
+				for (LevelFile levelFile : from)
+					levelFile.unSetMerging();
 				return true;
 			}
 			return false;

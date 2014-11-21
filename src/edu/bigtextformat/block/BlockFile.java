@@ -18,17 +18,26 @@ import edu.jlime.util.compression.CompressionType;
 import edu.jlime.util.compression.Compressor;
 
 public class BlockFile implements Closeable, Iterable<Block> {
-	private static final long MAX_CACHE_SIZE = 1000;
-	boolean reuseDeleted;
+	private static final long MAX_CACHE_SIZE = 1;
+	private static Cache<BlockID, Block> blocks = CacheBuilder.newBuilder()
+			.softValues().maximumSize(MAX_CACHE_SIZE)
+			.expireAfterAccess(5, TimeUnit.SECONDS).build();
+
+	// boolean reuseDeleted;
 
 	// TreeMap<Integer, List<Long>> deleted = new TreeMap<>();
 
 	private List<BlockPosChangeListener> blockPosChangeListeners = new ArrayList<>();
 
-	long magic;
 	RawFile file;
+
 	private Header header;
+
+	long magic;
+
 	private int minSize;
+
+	private Compressor comp;
 
 	UUID id = UUID.randomUUID();
 
@@ -37,12 +46,6 @@ public class BlockFile implements Closeable, Iterable<Block> {
 	// private static WeakHashMap<Block, Boolean> current = new WeakHashMap<>();
 	//
 	// private static WeakHashMap<Long, Block> blocks = new WeakHashMap<>();
-
-	private static Cache<BlockID, Block> blocks = CacheBuilder.newBuilder()
-			.softValues().maximumSize(MAX_CACHE_SIZE)
-			.expireAfterAccess(30, TimeUnit.SECONDS).build();
-
-	private Compressor comp;
 
 	private BlockFile(RawFile file) {
 		this.file = file;
@@ -95,8 +98,9 @@ public class BlockFile implements Closeable, Iterable<Block> {
 		return header;
 	}
 
-	public static BlockFile open(String path, long magic) throws Exception {
-		RawFile file = RawFile.getChannelRawFile(path, false, false);
+	public static BlockFile open(String path, BlockFileOptions opts)
+			throws Exception {
+		RawFile file = RawFile.getChannelRawFile(path, false, false, false);
 
 		BlockFile ret = new BlockFile(file);
 
@@ -104,14 +108,16 @@ public class BlockFile implements Closeable, Iterable<Block> {
 		if (file.length() > 0l) {
 			// exists
 			ret.magic = file.readLong(0);
-			if (ret.magic != magic)
+			if (ret.magic != opts.magic)
 				throw new Exception("Wrong File Type expected "
-						+ new String(DataTypeUtils.longToByteArray(magic))
+						+ new String(DataTypeUtils.longToByteArray(opts.magic))
 						+ " and got "
 						+ new String(DataTypeUtils.longToByteArray(ret.magic))
 						+ " for file " + path);
-		} else
+		} else {
+			file.close();
 			throw new Exception("Corrupted File: File length is 0");
+		}
 		Block headerBlock = ret.getBlock(8l, -1, false);
 		// headerBlock.setFixed(true);
 		// headerBlock.setMemoryMapped(true);
@@ -124,31 +130,35 @@ public class BlockFile implements Closeable, Iterable<Block> {
 		return ret;
 	}
 
-	public static BlockFile create(String path, int headerSize, int minSize,
-			long magic, Compressor comp, boolean trunc) throws Exception {
-		RawFile file = RawFile.getChannelRawFile(path, trunc, true);
+	public static BlockFile create(String path, BlockFileOptions opts)
+			throws Exception {
+		RawFile file = RawFile.getChannelRawFile(path, opts.trunc,
+				opts.readOnly, opts.appendOnly);
 		BlockFile ret = new BlockFile(file);
+		ret.minSize = opts.minSize;
 		ret.currentPos = file.length();
-		if (file.length() > 0l) {
-			throw new Exception("Already Exists.");
-		} else {
+		if (file.length() == 0l) {
 			ret.reserve(8);
-			file.write(0, DataTypeUtils.longToByteArray(magic));
+			file.write(0, DataTypeUtils.longToByteArray(opts.magic));
+		}
+		if (file.length() == 8l || !opts.appendOnly) {
+			Block headerBlock = ret.getBlock(8l, opts.headerSize, true);
+			headerBlock.setFixed(true);
+			// headerBlock.setMemoryMapped(true);
+			ret.header = Header.open(headerBlock);
+			if (opts.comp != null) {
+				ret.header.putData("comp", new byte[] { opts.comp.getType()
+						.getId() });
+				ret.comp = opts.comp;
+				ret.setCompressed(opts.comp);
+			} else
+				ret.header.putData("comp", new byte[] { -1 });
+			ret.header.putData("minSize",
+					DataTypeUtils.intToByteArray(opts.minSize));
+		} else {
+			ret.header = Header.emptyHeader();
 		}
 
-		Block headerBlock = ret.getBlock(8l, headerSize, true);
-		headerBlock.setFixed(true);
-		// headerBlock.setMemoryMapped(true);
-		ret.header = Header.open(headerBlock);
-		if (comp != null) {
-			ret.header.putData("comp", new byte[] { comp.getType().getId() });
-			ret.comp = comp;
-			ret.setCompressed(comp);
-		} else
-			ret.header.putData("comp", new byte[] { -1 });
-
-		ret.minSize = minSize;
-		ret.header.putData("minSize", DataTypeUtils.intToByteArray(minSize));
 		return ret;
 	}
 
@@ -156,12 +166,12 @@ public class BlockFile implements Closeable, Iterable<Block> {
 		return newBlock(null, minSize, false, true);
 	}
 
-	public long reserve(int max) {
+	public long reserve(long long1) {
 		synchronized (blocks) {
 			// Entry<Integer, List<Long>> e = deleted.ceilingEntry(max);
 			// if (e == null || e.getValue().isEmpty()) {
 			long res = currentPos;
-			currentPos += max;
+			currentPos += long1;
 			return res;
 			// } else {
 			// return e.getValue().remove(0);
@@ -214,7 +224,7 @@ public class BlockFile implements Closeable, Iterable<Block> {
 		return 8l + header.size();
 	}
 
-	public void removeBlock(long pos, int size, byte status) throws Exception {
+	public void removeBlock(long pos, long size, byte status) throws Exception {
 		synchronized (blocks) {
 			Block.setDeleted(file, status, pos);
 			blocks.invalidate(pos);
@@ -274,11 +284,21 @@ public class BlockFile implements Closeable, Iterable<Block> {
 		return pos;
 	}
 
-	public long appendBlock(BlockFile orig, long pos, int len)
+	public long appendBlock(BlockFile orig, long pos, long long1)
 			throws IOException {
-		long s = reserve(len);
-		this.file.copy(orig.getRawFile(), pos, len, s);
+		long s = reserve(long1);
+		this.file.copy(orig.getRawFile(), pos, long1, s);
 		return s;
 	}
 
+	public static BlockFile open(String path, long magicCheck) throws Exception {
+		return open(path, new BlockFileOptions().setMagic(magicCheck)
+				.setReadOnly(true));
+	}
+
+	public static BlockFile appendOnly(String path, long magicCheck)
+			throws Exception {
+		return create(path, new BlockFileOptions().setMagic(magicCheck)
+				.setAppendOnly(true));
+	}
 }

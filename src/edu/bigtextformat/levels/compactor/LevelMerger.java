@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
@@ -13,6 +14,7 @@ import edu.bigtextformat.levels.DataBlockIterator;
 import edu.bigtextformat.levels.DataBlockWriter;
 import edu.bigtextformat.levels.Level;
 import edu.bigtextformat.levels.PairReader;
+import edu.bigtextformat.levels.SingleFileWriter;
 import edu.bigtextformat.levels.levelfile.LevelFile;
 import edu.bigtextformat.levels.levelfile.LevelFileReader;
 import edu.bigtextformat.levels.levelfile.LevelFileWriter;
@@ -97,12 +99,26 @@ public class LevelMerger {
 		// }
 
 		// intersect.remove(from);
-
+		Iterator<LevelFile> itIntersection = intersect.iterator();
+		while (itIntersection.hasNext()) {
+			LevelFile levelFile = (LevelFile) itIntersection.next();
+			boolean res = levelFile.setMerging(to.level());
+			if (!res)
+				itIntersection.remove();
+		}
 		if (intersect.isEmpty() && list.size() == 1) {
-			current.moveTo(list.iterator().next(), to);
+			LevelFile next = list.iterator().next();
+			current.moveTo(next, to);
+			next.unSetMerging();
 			return;
 		}
-		CompactWriterV2 writer = new CompactWriterV2(to);
+
+		Writer writer = null;
+		if (current.getOpts().splitMergedFiles)
+			writer = new CompactWriterV2(to);
+		else {
+			writer = new SingleFileWriter(to);
+		}
 
 		ArrayList<LevelFile> intersectSorted = new ArrayList<>(intersect);
 
@@ -208,19 +224,7 @@ public class LevelMerger {
 		LevelFileWriter writer = temp.getWriter();
 
 		ArrayList<LevelFile> intersectSorted = new ArrayList<>(intersect);
-		Collections.sort(intersectSorted, new Comparator<LevelFile>() {
-			@Override
-			public int compare(LevelFile o1, LevelFile o2) {
-				try {
-					return files.getOpts().format.compare(o1.getMaxKey(),
-							o2.getMaxKey());
-				} catch (Exception e) {
-					e.printStackTrace();
-				}
-				return 0;
-			}
-
-		});
+		sortByKey(intersectSorted, files.getOpts().format);
 		ArrayList<LevelFileReader> readers = new ArrayList<>();
 		for (LevelFile levelFile : intersectSorted) {
 			readers.add(levelFile.getReader());
@@ -239,6 +243,22 @@ public class LevelMerger {
 			files.delete(levelFile);
 		}
 		return temp;
+	}
+
+	public static void sortByKey(List<LevelFile> intersectSorted,
+			final BlockFormat format) {
+		Collections.sort(intersectSorted, new Comparator<LevelFile>() {
+			@Override
+			public int compare(LevelFile o1, LevelFile o2) {
+				try {
+					return format.compare(o1.getMaxKey(), o2.getMaxKey());
+				} catch (Exception e) {
+					e.printStackTrace();
+				}
+				return 0;
+			}
+
+		});
 	}
 
 	public static PairReader getNext(List<PairReader> readers,

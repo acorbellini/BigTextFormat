@@ -10,8 +10,8 @@ import edu.jlime.util.DataTypeUtils;
 public abstract class RawFile implements Closeable {
 
 	public static RawFile getChannelRawFile(String path, boolean trunc,
-			boolean write) throws Exception {
-		return new RawFileChannel(path, trunc, write);
+			boolean readOnly, boolean appendOnly) throws Exception {
+		return new RawFileChannel(path, trunc, readOnly, appendOnly);
 	}
 
 	public abstract long length() throws Exception;
@@ -50,7 +50,7 @@ public abstract class RawFile implements Closeable {
 
 	public abstract void delete() throws IOException;
 
-	public abstract void copy(RawFile orig, long from, int len, long pos)
+	public abstract void copy(RawFile orig, long from, long len, long pos)
 			throws IOException;
 
 }
