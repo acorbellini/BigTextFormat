@@ -23,11 +23,18 @@ public class LevelOptions implements DataType<LevelOptions> {
 	public int minMergeElements = 10;
 	public int maxCompactorThreads = 20;
 	public int maxWriterThreads = 20;
-	public int sizeModifier = 4;
+	public int sizeModifier = 3;
 	public float maxSize = 50 * 1024 * 1024;
 	public int intersectSplit = 10;
 	public boolean splitMemtable = true;
 	public boolean splitMergedFiles = true;
+
+	public boolean appendOnlyMode = false;
+
+	public LevelOptions setAppendOnly(boolean append) {
+		this.appendOnlyMode = append;
+		return this;
+	}
 
 	public LevelOptions setCompressed(Compressor comp) {
 		this.comp = comp;

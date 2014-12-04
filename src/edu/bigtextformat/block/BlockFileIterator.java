@@ -25,8 +25,11 @@ class BlockFileIterator implements Iterator<Block> {
 				current = file.getBlock(current.getNextBlockPos(), false);
 			// } while (current.isDeleted());
 			return true;
+		} catch (MissingBlockException e) {
+			// No more blocks.. I guess
+			return false;
 		} catch (Exception e) {
-			// e.printStackTrace();
+			e.printStackTrace();
 			return false;
 		}
 	}

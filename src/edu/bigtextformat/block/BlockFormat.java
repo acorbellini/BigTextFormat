@@ -5,8 +5,8 @@ import java.util.Comparator;
 import edu.bigtextformat.data.BlockData;
 import edu.bigtextformat.record.DataType;
 
-public abstract class BlockFormat implements Comparator<byte[]>,
-		DataType<BlockFormat> {
+public abstract class BlockFormat implements DataType<BlockFormat>,
+		Comparator<byte[]> {
 
 	public abstract BlockFormat getKeyFormat();
 

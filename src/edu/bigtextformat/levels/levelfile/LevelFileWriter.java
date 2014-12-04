@@ -1,13 +1,21 @@
 package edu.bigtextformat.levels.levelfile;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import edu.bigtextformat.levels.DataBlock;
+import edu.bigtextformat.levels.DataBlockImpl;
 import edu.bigtextformat.levels.DataBlockWriter;
 import edu.bigtextformat.levels.LevelOptions;
 
 public class LevelFileWriter {
 	DataBlockWriter curr;
+
+	List<DataBlock> created = new ArrayList<>();
+
 	private LevelFile f;
 	private LevelOptions opts;
+	long size = 0;
 
 	public LevelFileWriter(LevelFile levelFile, LevelOptions opts) {
 		this.f = levelFile;
@@ -17,25 +25,41 @@ public class LevelFileWriter {
 
 	public void add(byte[] k, byte[] val) throws Exception {
 		if (curr.size() >= opts.maxBlockSize) {
+			// System.out.println("Block surpased max size, flushing to disk.");
 			flushCurrentBlock();
 		}
 		curr.add(k, val);
 	}
 
 	private void flushCurrentBlock() throws Exception {
-		f.put(curr.getDB());
-		curr.clear();
+		if (curr.size() > 0) {
+			// f.put(curr.getDB());
+			DataBlockImpl db = curr.getDB();
+			add(db);
+			curr.clear();
+		}
+	}
+
+	private void add(DataBlock db) {
+		created.add(db);
+		size += db.size();
 	}
 
 	public void close() throws Exception {
-		if (curr.size() > 0)
-			f.put(curr.getDB());
+		flushCurrentBlock();
+		for (DataBlock dataBlock : created) {
+			f.put(dataBlock);
+		}
 	}
 
-	public void add(DataBlock dataBlock) throws Exception {
-		if (curr.size() > 0)
-			flushCurrentBlock();
-		f.put(dataBlock);
+	public void addDatablock(DataBlock dataBlock) throws Exception {
+		flushCurrentBlock();
+		// f.put(dataBlock);
+		add(dataBlock);
+	}
+
+	public long size() {
+		return size;
 	}
 
 }

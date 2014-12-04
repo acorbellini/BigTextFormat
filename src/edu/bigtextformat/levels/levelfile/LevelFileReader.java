@@ -23,6 +23,10 @@ public class LevelFileReader implements Iterator<DataBlockReference> {
 		advance();
 	}
 
+	public LevelFile getFile() {
+		return file;
+	}
+
 	private void advance() throws Exception {
 		if (indexPos < index.size()) {
 
@@ -32,12 +36,12 @@ public class LevelFileReader implements Iterator<DataBlockReference> {
 			int len = 0;
 			long nextPos = index.getNextBlockTo(pos);
 			if (nextPos < 0)
-				nextPos = file.getFile().getLastBlockPosition();
+				nextPos = file.getLastBlockPosition();
 			len = (int) (nextPos - pos);
 			if (len < 0)
 				throw new Exception(
 						"Length is < 0 on index at file (Index unordered or corrupted)"
-								+ file.getFile().getRawFile().getFile());
+								+ file.getPath());
 
 			this.curr = new DataBlockReference(file, currMaxKey, pos, len);
 			indexPos++;

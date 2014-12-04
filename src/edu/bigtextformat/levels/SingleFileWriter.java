@@ -1,5 +1,8 @@
 package edu.bigtextformat.levels;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import edu.bigtextformat.levels.compactor.Writer;
 import edu.bigtextformat.levels.levelfile.LevelFile;
 import edu.bigtextformat.levels.levelfile.LevelFileWriter;
@@ -17,8 +20,8 @@ public class SingleFileWriter implements Writer {
 	}
 
 	@Override
-	public void add(DataBlock dataBlock) throws Exception {
-		lwriter.add(dataBlock);
+	public void addDataBlock(DataBlock dataBlock) throws Exception {
+		lwriter.addDatablock(dataBlock);
 	}
 
 	@Override
@@ -32,5 +35,12 @@ public class SingleFileWriter implements Writer {
 	public void add(byte[] k, byte[] v) throws Exception {
 		lwriter.add(k, v);
 	}
+
+	// @Override
+	// public List<LevelFile> getFiles() {
+	// ArrayList<LevelFile> list = new ArrayList<>();
+	// list.add(levelFile);
+	// return list;
+	// }
 
 }

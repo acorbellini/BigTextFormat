@@ -12,7 +12,7 @@ public enum Operations {
 		return id;
 	}
 	
-	public Operations fromID(byte id) {
+	public static Operations fromID(byte id) {
 		for (Operations op : values()) {
 			if(op.getId()==id)
 				return op;

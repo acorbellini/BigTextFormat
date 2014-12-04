@@ -5,7 +5,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
-final class Level0Writer {
+final class LogFileWriter {
 	/**
 	 * 
 	 */
@@ -19,7 +19,7 @@ final class Level0Writer {
 	/**
 	 * @param sortedLevelFile
 	 */
-	Level0Writer(SortedLevelFile sortedLevelFile) {
+	LogFileWriter(SortedLevelFile sortedLevelFile) {
 		sortedFile = sortedLevelFile;
 		exec = Executors
 				.newFixedThreadPool(sortedFile.getOpts().maxWriterThreads);
@@ -51,7 +51,7 @@ final class Level0Writer {
 					@Override
 					public void run() {
 						try {
-							sortedFile.writeNextMemtable();
+							// sortedFile.writeNextMemtable();
 						} catch (Exception e) {
 							e.printStackTrace();
 						} finally {

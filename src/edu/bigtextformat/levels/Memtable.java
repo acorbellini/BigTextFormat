@@ -1,13 +1,13 @@
 package edu.bigtextformat.levels;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
-import edu.bigtextformat.block.BlockFile;
 import edu.bigtextformat.block.BlockFormat;
-import edu.jlime.util.DataTypeUtils;
 
 public class Memtable {
 
@@ -15,11 +15,9 @@ public class Memtable {
 
 	TreeMap<byte[], byte[]> data;
 
-	private int size = 0;
+	private LogFile log;
 
-	private BlockFile log;
-
-	int logCount = 0;
+	private static AtomicInteger logCount = new AtomicInteger(0);
 
 	private String path;
 
@@ -27,26 +25,43 @@ public class Memtable {
 
 	public Memtable(String path, BlockFormat format) throws Exception {
 		this.path = path;
-		initLog();
+		// initLog();
 		this.format = format;
 		data = new TreeMap<byte[], byte[]>(format);
 	}
 
 	private void initLog() throws Exception {
-		log = BlockFile.appendOnly(path + "/LOG." + logCount++,
-				DataTypeUtils.byteArrayToLong("MANIFEST".getBytes()));
+		log = new LogFile(new File(path + "/" + logCount.getAndIncrement()
+				+ ".LOG"));
+		log.appendMode();
 	}
 
 	public synchronized void put(byte[] k, byte[] val) throws Exception {
-		Operation e = new Operation(Operations.PUT.getId(), k, val);
+		if (log == null)
+			initLog();
+		Operation e = new Operation(Operations.PUT, k, val);
+
 		// table.add(e);
 		byte[] opAsBytes = e.toByteArray();
-		log.newFixedBlock(opAsBytes);
-		size += opAsBytes.length;
+		log.append(opAsBytes);
+
+		data.put(k, val);
+
+		if (data.size() % 200000 == 0) {
+			log.flush();
+		}
 	}
 
-	public int size() {
-		return size;
+	public long logSize() throws Exception {
+		if (log == null)
+			return 0;
+		return log.size();
+	}
+
+	public boolean isEmpty() throws Exception {
+		if (log == null)
+			return true;
+		return log.isEmpty();
 	}
 
 	public byte[] lastKey() {
@@ -77,15 +92,14 @@ public class Memtable {
 		log.close();
 	}
 
-	public String getLogName() {
-		return log.getRawFile().getFile().getName();
+	public LogFile getLog() {
+		return log;
 	}
 
 	public void clear() throws Exception {
 
 		initLog();
 		data.clear();
-		size = 0;
 	}
 
 	public Pair<byte[], byte[]> getFirstIntersect(byte[] from,
@@ -118,5 +132,11 @@ public class Memtable {
 
 	public byte[] get(byte[] k) {
 		return data.get(k);
+	}
+
+	public static void updateLogCount(Integer currentCount) {
+		if (currentCount > logCount.get())
+			logCount.set(currentCount);
+
 	}
 }

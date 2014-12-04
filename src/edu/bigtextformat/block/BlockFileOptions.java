@@ -3,9 +3,9 @@ package edu.bigtextformat.block;
 import edu.jlime.util.compression.Compressor;
 
 public class BlockFileOptions {
-	int headerSize = 512;
+	int headerSize = 32;
 
-	int minSize = 1024;
+	int minSize = 16;
 
 	long magic = 0L;
 
@@ -17,6 +17,20 @@ public class BlockFileOptions {
 
 	boolean appendOnly = false;
 
+	boolean sync = false;
+	
+	boolean enableCache = true;
+	
+	public BlockFileOptions setEnableCache(boolean enableCache) {
+		this.enableCache = enableCache;
+		return this;
+	}
+	
+	public BlockFileOptions setSync(boolean sync) {
+		this.sync = sync;
+		return this;
+	}
+	
 	public BlockFileOptions setAppendOnly(boolean appendOnly) {
 		this.appendOnly = appendOnly;
 		return this;

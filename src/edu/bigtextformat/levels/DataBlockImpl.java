@@ -2,8 +2,8 @@ package edu.bigtextformat.levels;
 
 import java.util.Arrays;
 
-import edu.bigtextformat.block.BlockFile;
 import edu.bigtextformat.block.BlockFormat;
+import edu.bigtextformat.levels.levelfile.LevelFile;
 import edu.bigtextformat.record.DataType;
 import edu.jlime.util.ByteBuffer;
 
@@ -11,6 +11,8 @@ public class DataBlockImpl implements DataType<DataBlockImpl>, DataBlock {
 
 	// ByteArrayList keys = new ByteArrayList();
 	// ByteArrayList values = new ByteArrayList();
+
+	private LevelFile levelFile;
 
 	byte[] k_list;
 	int[] k_index;
@@ -20,11 +22,11 @@ public class DataBlockImpl implements DataType<DataBlockImpl>, DataBlock {
 	// private Block b;
 	Long blockPos;
 
-	private int size = 0;
+	private long size = 0;
 	private Long blockSize;
-	private BlockFile bf;
 
-	public DataBlockImpl() {
+	public DataBlockImpl(LevelFile levelFile2) {
+		this.levelFile = levelFile2;
 	}
 
 	public DataBlockImpl(byte[] k, int[] ki, byte[] v, int[] vi) {
@@ -101,7 +103,7 @@ public class DataBlockImpl implements DataType<DataBlockImpl>, DataBlock {
 	 * @see edu.bigtextformat.levels.DataBlock#size()
 	 */
 	@Override
-	public int size() {
+	public long size() {
 		return size;
 	}
 
@@ -264,8 +266,8 @@ public class DataBlockImpl implements DataType<DataBlockImpl>, DataBlock {
 	}
 
 	@Override
-	public BlockFile getBlockFile() {
-		return bf;
+	public LevelFile getFile() {
+		return levelFile;
 	}
 
 	@Override
@@ -280,9 +282,4 @@ public class DataBlockImpl implements DataType<DataBlockImpl>, DataBlock {
 	public Long getBlockPos() {
 		return blockPos;
 	}
-
-	public void setBlockFile(BlockFile file) {
-		this.bf = file;
-	}
-
 }

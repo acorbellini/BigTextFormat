@@ -5,8 +5,13 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Iterator;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
@@ -25,46 +30,73 @@ import edu.bigtextformat.levels.SortedLevelFile;
 import edu.jlime.util.DataTypeUtils;
 
 public class LevelFile {
-	private static final long MAX_CACHE_SIZE = 50;
 
-	private static Cache<DataBlockID, DataBlockImpl> cache = CacheBuilder
-			.newBuilder().maximumSize(MAX_CACHE_SIZE)
-			.expireAfterAccess(5, TimeUnit.SECONDS).softValues().build();
+	private static Timer timer = new Timer("LevelFile close daemon", true);
+
+	private static enum LevelFileStatus {
+		CREATED, COMMITED, PERSISTED, DELETED, MERGING
+	}
+
+	ReadWriteLock closeLock = new ReentrantReadWriteLock();
+
+	private static final long MAX_CACHE_SIZE = 5000;
+
+	private static final long TIME_TO_CLOSE = 5000;
+
+	private Cache<DataBlockID, DataBlockImpl> cache = CacheBuilder
+			.newBuilder()
+			.maximumSize(MAX_CACHE_SIZE)
+			.expireAfterAccess(5, TimeUnit.SECONDS)
+			.weakValues()
+			.build();
+
+	private LevelFileStatus state = LevelFileStatus.PERSISTED;
 
 	private volatile BlockFile file = null;
+
 	private volatile LevelOptions opts = null;
+
 	private volatile Index index;
 
 	private int cont;
 	private int level;
+
 	private String dir;
 	private String path;
 
 	private byte[] minKey;
-
 	private byte[] maxKey;
-
-	private boolean commited = false;
-
-	private boolean deleted;
 
 	private Index fixedIndex;
 
 	private UUID id = UUID.randomUUID();
 
-	private boolean merging;
+	private String name;
+
+	private volatile long lastUsed;
+
+	private Lock rl;
+
+	private Lock wl;
 
 	private LevelFile(File f, int level, int cont, byte[] minKey, byte[] maxKey) {
 		this.dir = f.getParent();
 		this.path = f.getPath();
+		this.name = f.getName();
 		this.level = level;
 		this.cont = cont;
 		this.minKey = minKey;
 		this.maxKey = maxKey;
+		this.rl = closeLock.readLock();
+		this.wl = closeLock.writeLock();
+	}
+
+	public String getName() {
+		return name;
 	}
 
 	public void put(DataBlock dataBlock) throws Exception {
-		if (commited)
+		if (!state.equals(LevelFileStatus.CREATED))
 			throw new Exception("LevelFile is read only");
 
 		byte[] firstKey = dataBlock.firstKey();
@@ -78,7 +110,7 @@ public class LevelFile {
 		long pos = 0;
 
 		if (dataBlock.getBlockPos() != null)
-			pos = getFile().appendBlock(dataBlock.getBlockFile(),
+			pos = getFile().appendBlock(dataBlock.getFile().getFile(),
 					dataBlock.getBlockPos(), dataBlock.getLen());
 		else {
 			Block b = getFile().newFixedBlock(dataBlock.toByteArray());
@@ -93,23 +125,27 @@ public class LevelFile {
 		getFile().newUncompressedFixedBlock(getIndex().toByteArray());
 		getFile().close();
 		fixedIndex = null;
-		commited = true;
+		state = LevelFileStatus.COMMITED;
 	}
 
-	public void persist() throws Exception {
+	public synchronized void persist() throws Exception {
 		// System.out.println("Closing" + file.getRawFile().getFile());
 
-		File curr = getFile().getRawFile().getFile();
+		// File curr = getFile().getRawFile().getFile();
 		String newPath = SortedLevelFile.getPath(dir, level, cont);
 		// System.out.println("Moving " + curr + " to " + newPath);
 		try {
-			Files.move(Paths.get(curr.getPath()), Paths.get(newPath));
+			Files.move(Paths.get(path), Paths.get(newPath));
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
 		// System.out.println("Moved " + curr + " to " + newPath);
 		path = newPath;
-		setFile(openBlockFile(newPath));
+		name = new File(newPath).getName();
+		file = null;
+		state = LevelFileStatus.PERSISTED;
+		startTimer();
+		// setFile(openBlockFile(newPath));
 		// System.out.println("Persited " + newPath);
 	}
 
@@ -125,6 +161,7 @@ public class LevelFile {
 		LevelFile lf = new LevelFile(new File(path), level, cont, null, null);
 		lf.setFile(bf);
 		lf.setOpts(opts);
+		lf.state = LevelFileStatus.CREATED;
 		lf.setIndex(new Index(opts.format));
 		return lf;
 	}
@@ -141,6 +178,7 @@ public class LevelFile {
 				new BlockFileOptions()
 						.setHeaderSize(512)
 						.setMinSize(512)
+						.setAppendOnly(true)
 						.setMagic(
 								DataTypeUtils.byteArrayToLong("SSTTABLE"
 										.getBytes())).setComp(opts.comp));
@@ -156,7 +194,12 @@ public class LevelFile {
 	}
 
 	public long size() throws Exception {
-		return getFile().size();
+		try {
+			rl.lock();
+			return getFile().size();
+		} finally {
+			rl.unlock();
+		}
 	}
 
 	public int getCont() {
@@ -181,19 +224,19 @@ public class LevelFile {
 
 	public void moveTo(int i, int cont) throws Exception {
 		try {
-			getFile().close();
+			close();
 		} catch (Exception e1) {
 			e1.printStackTrace();
 		}
-		File curr = getFile().getRawFile().getFile();
 		String newPath = SortedLevelFile.getPath(dir, i, cont);
 		try {
-			Files.move(Paths.get(curr.getPath()), Paths.get(newPath));
+			Files.move(Paths.get(path), Paths.get(newPath));
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
 		path = newPath;
-		setFile(openBlockFile(newPath));
+		name = new File(newPath).getName();
+		// setFile(openBlockFile(newPath));
 		level = i;
 		this.cont = cont;
 	}
@@ -203,17 +246,25 @@ public class LevelFile {
 	}
 
 	public DataBlock getDataBlock(long pos) throws Exception {
+		lastUsed = System.currentTimeMillis();
 		DataBlockImpl block = cache.getIfPresent(DataBlockID.create(id, pos));
 		if (block == null) {
 			synchronized (cache) {
 				block = cache.getIfPresent(pos);
 				if (block == null) {
-					Block b = getFile().getBlock(pos, false);
-					if (b.getNextBlockPos() == getFile().length()) // index
-																	// position...
+					rl.lock();
+					Block b;
+					long length;
+					try {
+						b = getFile().getBlock(pos, false);
+						length = getFile().length();
+					} finally {
+						rl.unlock();
+					}
+					if (b.getNextBlockPos() == length) // index
+														// position...
 						return null;
-					block = new DataBlockImpl().fromByteArray(b.payload());
-					block.setBlockFile(getFile());
+					block = new DataBlockImpl(this).fromByteArray(b.payload());
 					block.setBlockPos(b.getPos());
 					block.setBlockSize(b.size());
 					cache.put(DataBlockID.create(id, b.getPos()), block);
@@ -224,13 +275,16 @@ public class LevelFile {
 	}
 
 	public synchronized void delete() throws Exception {
+		wl.lock();
 		getFile().delete();
-		deleted = true;
+		wl.unlock();
+
+		state = LevelFileStatus.DELETED;
 	}
 
 	public boolean contains(byte[] k, BlockFormat format) throws Exception {
 		synchronized (this) {
-			if (deleted)
+			if (state.equals(LevelFileStatus.DELETED))
 				return false;
 		}
 
@@ -285,24 +339,37 @@ public class LevelFile {
 					+ Arrays.toString(getIndex().getMaxKey()) + ", cont="
 					+ cont + ", path=" + path + "]";
 		} catch (Exception e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
 		return "";
 	}
 
-	public void close() throws Exception {
-		getFile().close();
+	public synchronized void close() throws Exception {
+		wl.lock();
+		if (file != null)
+			file.close();
+		file = null;
+		index = null;
+		wl.unlock();
 	}
 
 	public Pair<byte[], byte[]> getFirstBetween(byte[] from, boolean inclFrom,
 			byte[] to, boolean inclTo, BlockFormat format) throws Exception {
+		lastUsed = System.currentTimeMillis();
 		// if (format.compare(from, maxKey) > 0 || format.compare(to, minKey) <
 		// 0)
 		// return null;
 		// long pos = index.get(from, format);
 		// if (pos < 0)
 		// return null;
+		int compareMin = getOpts().format.compare(to, minKey);
+
+		if (compareMin < 0 || (compareMin == 0 && !inclTo))
+			return null;
+
+		int compareMax = getOpts().format.compare(from, maxKey);
+		if (compareMax > 0 || (compareMax == 0 && !inclFrom))
+			return null;
 
 		Iterator<Long> it = getIndex().range(from, to, format);
 		while (it.hasNext()) {
@@ -337,8 +404,9 @@ public class LevelFile {
 	// }
 
 	public byte[] get(byte[] k, BlockFormat format) throws Exception {
+		lastUsed = System.currentTimeMillis();
 		synchronized (this) {
-			if (deleted)
+			if (state.equals(LevelFileStatus.DELETED))
 				return null;
 		}
 
@@ -355,7 +423,9 @@ public class LevelFile {
 		return db.get(k, format);
 	}
 
-	public BlockFile getFile() throws Exception {
+	private BlockFile getFile() throws Exception {
+		lastUsed = System.currentTimeMillis();
+
 		if (file == null) {
 			synchronized (this) {
 				if (file == null)
@@ -363,14 +433,35 @@ public class LevelFile {
 			}
 		}
 
+		if (state.equals(LevelFileStatus.PERSISTED))
+			startTimer();
+
 		return file;
 	}
 
-	public void setFile(BlockFile file) {
+	private void startTimer() {
+		timer.schedule(new TimerTask() {
+
+			@Override
+			public void run() {
+				try {
+					if (System.currentTimeMillis() - lastUsed >= TIME_TO_CLOSE) {
+						close();
+						cancel();
+					}
+				} catch (Exception e) {
+					e.printStackTrace();
+				}
+			}
+		}, TIME_TO_CLOSE, TIME_TO_CLOSE);
+	}
+
+	private void setFile(BlockFile file) {
 		this.file = file;
 	}
 
 	public Index getIndex() throws Exception {
+		lastUsed = System.currentTimeMillis();
 		if (fixedIndex != null)
 			return fixedIndex;
 
@@ -382,8 +473,15 @@ public class LevelFile {
 					// Index i = new Index(getOpts().format)
 					// .fromByteArray(getFile().getLastBlock().payload());
 					// index = new SoftReference<Index>(i);
-					index = new Index(getOpts().format).fromByteArray(getFile()
-							.getLastBlock().payload());
+					rl.lock();
+					byte[] payload;
+					try {
+						payload = getFile().getLastBlock().payload();
+					} finally {
+						rl.unlock();
+					}
+
+					index = new Index(getOpts().format).fromByteArray(payload);
 				}
 			}
 		}
@@ -392,11 +490,20 @@ public class LevelFile {
 	}
 
 	public LevelOptions getOpts() throws Exception {
+		lastUsed = System.currentTimeMillis();
 		if (opts == null) {
 			synchronized (this) {
 				if (opts == null) {
-					opts = new LevelOptions().fromByteArray(getFile()
-							.getHeader().get("opts"));
+					rl.lock();
+					byte[] data;
+					try {
+						data = getFile().getHeader().get("opts");
+					} finally {
+						rl.unlock();
+					}
+
+					opts = new LevelOptions().fromByteArray(data);
+
 				}
 
 			}
@@ -419,17 +526,30 @@ public class LevelFile {
 	}
 
 	public synchronized boolean isMerging() {
-		return merging;
+		return state.equals(LevelFileStatus.MERGING);
 	}
 
 	public synchronized boolean setMerging(int level) {
-		if (merging || this.level != level)
+		if (state.equals(LevelFileStatus.MERGING) || this.level != level)
 			return false;
-		this.merging = true;
+		this.state = LevelFileStatus.MERGING;
 		return true;
 	}
 
 	public synchronized void unSetMerging() {
-		this.merging = false;
+		this.state = LevelFileStatus.PERSISTED;
+	}
+
+	public boolean isDeleted() {
+		return this.state.equals(LevelFileStatus.DELETED);
+	}
+
+	public long getLastBlockPosition() throws Exception {
+		try {
+			rl.lock();
+			return getFile().getLastBlockPosition();
+		} finally {
+			rl.unlock();
+		}
 	}
 }

@@ -10,7 +10,7 @@ import java.util.concurrent.TimeUnit;
 
 import edu.bigtextformat.levels.SortedLevelFile;
 
-public class CompactorV2 implements CompactorInterface {
+public class CompactorV2 implements Compactor {
 	private static final int NORMAL = 0;
 	private static final int STOPPING = 1;
 	private static final int STOPPED = 2;

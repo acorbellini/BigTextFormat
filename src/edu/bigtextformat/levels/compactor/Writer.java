@@ -1,9 +1,12 @@
 package edu.bigtextformat.levels.compactor;
 
+import java.util.List;
+
 import edu.bigtextformat.levels.DataBlock;
+import edu.bigtextformat.levels.levelfile.LevelFile;
 
 public interface Writer {
-	public void add(DataBlock dataBlock) throws Exception;
+	public void addDataBlock(DataBlock dataBlock) throws Exception;
 
 	public void persist() throws Exception;
 

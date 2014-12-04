@@ -10,27 +10,40 @@ import edu.bigtextformat.data.BlockData;
 import edu.jlime.util.ByteBuffer;
 
 public class RecordFormat extends BlockFormat {
-	List<String> header;
-	List<FormatType<?>> formats;
-	private List<String> key;
+	String[] header;
+	FormatType<?>[] formats;
+	private String[] key;
 	private BlockFormat secondFormat;
 
 	public RecordFormat(List<String> h, List<FormatType<?>> f, List<String> k) {
-		this.header = h;
-		this.formats = f;
-		this.key = k;
+		this(h.toArray(new String[] {}), f.toArray(new FormatType<?>[] {}), k
+				.toArray(new String[] {}));
+
 	}
 
 	public RecordFormat() {
 	}
 
+	public RecordFormat(String[] h, FormatType<?>[] f, String[] k) {
+		this.header = h;
+		this.formats = f;
+		this.key = k;
+	}
+
 	FormatType<?> getFormat(String el) {
-		return formats.get(header.indexOf(el));
+		return formats[headerPos(el)];
+	}
+
+	private int headerPos(String el) {
+		for (int i = 0; i < header.length; i++) {
+			if (header[i].equals(el))
+				return i;
+		}
+		return -1;
 	}
 
 	@Override
 	public byte[] getKey(BlockData data) {
-		Record r = (Record) data;
 		ByteBuffer buff = new ByteBuffer();
 		for (String h : key) {
 			byte[] val = getData(h, data.toByteArray());
@@ -41,8 +54,8 @@ public class RecordFormat extends BlockFormat {
 
 	@Override
 	public int compare(byte[] d1, byte[] d2) {
-		for (int i = 0; i < header.size(); i++) {
-			String k = header.get(i);
+		for (int i = 0; i < header.length; i++) {
+			String k = header[i];
 			int c = compare(k, d1, d2);
 			if (c != 0)
 				return c;
@@ -53,17 +66,17 @@ public class RecordFormat extends BlockFormat {
 	}
 
 	private int compare(String k, byte[] d1, byte[] d2) {
-		int pos = header.indexOf(k);
+		int pos = headerPos(k);
 
-		FormatType<?> f = formats.get(pos);
+		FormatType<?> f = formats[pos];
 		return f.compare(d1, getOffset(k, d1), d2, getOffset(k, d2));
 	}
 
 	private int getOffset(String k, byte[] data) {
 		int offset = 0;
-		for (int i = 0; i < header.size(); i++) {
-			if (!header.get(i).equals(k)) {
-				offset += formats.get(i).size(offset, data);
+		for (int i = 0; i < header.length; i++) {
+			if (!header[i].equals(k)) {
+				offset += formats[i].size(offset, data);
 			} else
 				return offset;
 		}
@@ -73,11 +86,11 @@ public class RecordFormat extends BlockFormat {
 
 	public byte[] getData(String k, byte[] d) {
 		int offset = 0;
-		for (int i = 0; i < header.size(); i++) {
-			if (!header.get(i).equals(k)) {
-				offset += formats.get(i).size(offset, d);
+		for (int i = 0; i < header.length; i++) {
+			if (!header[i].equals(k)) {
+				offset += formats[i].size(offset, d);
 			} else {
-				return formats.get(i).getData(offset, d);
+				return formats[i].getData(offset, d);
 			}
 
 		}
@@ -87,9 +100,9 @@ public class RecordFormat extends BlockFormat {
 	@Override
 	public byte[] toByteArray() throws Exception {
 		ByteBuffer buff = new ByteBuffer();
-		buff.putStringList(header);
-		buff.putStringList(key);
-		buff.putInt(formats.size());
+		buff.putStringArray(header);
+		buff.putStringArray(key);
+		buff.putInt(formats.length);
 		for (FormatType<?> formatType : formats) {
 			buff.putString(formatType.getType().name());
 		}
@@ -106,13 +119,14 @@ public class RecordFormat extends BlockFormat {
 	@Override
 	public RecordFormat fromByteArray(byte[] data) throws Exception {
 		ByteBuffer buff = new ByteBuffer(data);
-		header = buff.getStringList();
-		key = buff.getStringList();
-		formats = new ArrayList<>();
+		header = buff.getStringArray();
+		key = buff.getStringArray();
+
 		int formatsize = buff.getInt();
+		formats = new FormatType<?>[formatsize];
 		for (int i = 0; i < formatsize; i++) {
 			String type = buff.getString();
-			formats.add(FormatTypes.valueOf(type).getType());
+			formats[i] = FormatTypes.valueOf(type).getType();
 		}
 		byte[] secondAsBytes = buff.getByteArray();
 		if (secondAsBytes.length != 0) {
@@ -128,10 +142,10 @@ public class RecordFormat extends BlockFormat {
 		return ret;
 	}
 
-	private List<FormatType<?>> getFormats(List<String> key2) {
-		List<FormatType<?>> formats = new ArrayList<>();
-		for (String k : key2) {
-			formats.add(getFormat(k));
+	private FormatType<?>[] getFormats(String[] key2) {
+		FormatType<?>[] formats = new FormatType<?>[key2.length];
+		for (int i = 0; i < key2.length; i++) {
+			formats[i] = getFormat(key2[i]);
 		}
 		return formats;
 	}
@@ -147,15 +161,15 @@ public class RecordFormat extends BlockFormat {
 	}
 
 	public int size() {
-		return header.size();
+		return header.length;
 	}
 
 	public int getPos(String k) {
-		return header.indexOf(k);
+		return headerPos(k);
 	}
 
 	public FormatType<?> getFormat(int i) {
-		return formats.get(i);
+		return formats[i];
 	}
 
 	@Override
@@ -163,13 +177,13 @@ public class RecordFormat extends BlockFormat {
 		boolean first = true;
 		StringBuilder builder = new StringBuilder();
 		builder.append("(");
-		for (int i = 0; i < header.size(); i++) {
+		for (int i = 0; i < header.length; i++) {
 			if (first)
 				first = false;
 			else
 				builder.append(",");
-			String k = header.get(i);
-			builder.append(k + ":" + formats.get(i).get(getData(k, bs)));
+			String k = header[i];
+			builder.append(k + ":" + formats[i].get(getData(k, bs)));
 		}
 		builder.append(")");
 		return builder.toString();

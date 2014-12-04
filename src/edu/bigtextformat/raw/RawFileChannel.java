@@ -20,7 +20,7 @@ public class RawFileChannel extends RawFile {
 	private Path p;
 
 	public RawFileChannel(String path, boolean trunc, boolean readOnly,
-			boolean appendOnly) throws IOException {
+			boolean appendOnly, boolean sync) throws IOException {
 		this.p = Paths.get(path);
 
 		Set<OpenOption> opts = new HashSet<>();
@@ -37,8 +37,8 @@ public class RawFileChannel extends RawFile {
 		}
 		if (trunc)
 			opts.add(StandardOpenOption.TRUNCATE_EXISTING);
-
-		// opts.add(StandardOpenOption.SYNC);
+		if (sync)
+			opts.add(StandardOpenOption.SYNC);
 
 		this.f = FileChannel.open(p, opts);
 		// String mode = "r";
@@ -48,14 +48,27 @@ public class RawFileChannel extends RawFile {
 	}
 
 	@Override
-	public long length() throws Exception {
-		return f.size();
+	public long length() throws FileChannelException {
+		try {
+			return f.size();
+		} catch (Exception e) {
+			throw new FileChannelException(this, e);
+		}
 		// return f.length();
 	}
 
 	@Override
 	public void write(long pos, byte[] byteArray) throws Exception {
 		ByteBuffer order = ByteBuffer.wrap(byteArray);
+		f.write(order, pos);
+		// f.setLength(pos + byteArray.length + 1);
+		// f.write(byteArray, (int) pos, byteArray.length);
+	}
+
+	public void write(long pos, edu.jlime.util.ByteBuffer byteArray)
+			throws Exception {
+		ByteBuffer order = ByteBuffer.wrap(byteArray.getBuffered(),
+				byteArray.getOffset(), byteArray.getWritePos());
 		f.write(order, pos);
 		// f.setLength(pos + byteArray.length + 1);
 		// f.write(byteArray, (int) pos, byteArray.length);
@@ -77,9 +90,12 @@ public class RawFileChannel extends RawFile {
 
 	@Override
 	public void close() throws IOException {
+		// System.out.println("Closed file " + getPath());
+		if (!f.isOpen())
+			return;
 		sync();
 		f.close();
-		// System.out.println("Closed file " + p);
+
 	}
 
 	@Override
@@ -96,7 +112,6 @@ public class RawFileChannel extends RawFile {
 	public MappedByteBuffer memMap(long pos, long nextBlockPos)
 			throws IOException {
 		return f.map(MapMode.READ_WRITE, pos, nextBlockPos - pos);
-		// return null;
 	}
 
 	@Override
@@ -122,4 +137,7 @@ public class RawFileChannel extends RawFile {
 		}
 	}
 
+	public String getPath() {
+		return p.toString();
+	}
 }

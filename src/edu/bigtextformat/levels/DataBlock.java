@@ -2,6 +2,7 @@ package edu.bigtextformat.levels;
 
 import edu.bigtextformat.block.BlockFile;
 import edu.bigtextformat.block.BlockFormat;
+import edu.bigtextformat.levels.levelfile.LevelFile;
 
 public interface DataBlock {
 
@@ -9,7 +10,7 @@ public interface DataBlock {
 
 	public abstract DataBlock fromByteArray(byte[] data) throws Exception;
 
-	public abstract int size();
+	public abstract long size();
 
 	public abstract byte[] lastKey();
 
@@ -24,11 +25,11 @@ public interface DataBlock {
 	public abstract String print(BlockFormat format);
 
 	public abstract int indexSize();
+	
+	public abstract LevelFile getFile();
 
 	public abstract Pair<byte[], byte[]> getFirstBetween(byte[] from,
 			boolean inclFrom, byte[] to, boolean inclTo, BlockFormat format);
-
-	public abstract BlockFile getBlockFile() throws Exception;
 
 	public abstract byte[] get(byte[] k, BlockFormat format);
 

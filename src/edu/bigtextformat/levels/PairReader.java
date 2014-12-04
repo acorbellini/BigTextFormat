@@ -21,10 +21,14 @@ public class PairReader {
 	}
 
 	private void advanceIt() {
-		while (reader.hasNext()) {
-			it = reader.next().iterator();
-			if (it.hasNext())
-				return;
+		try {
+			while (reader.hasNext()) {
+				it = reader.next().iterator();
+				if (it.hasNext())
+					return;
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
 		}
 		it = null;
 	}
@@ -43,9 +47,9 @@ public class PairReader {
 	}
 
 	public void advance() {
-		if(it!=null){
+		if (it != null) {
 			it.advance();
-			if(!it.hasNext())
+			if (!it.hasNext())
 				advanceIt();
 		}
 		// if (!it.hasNext()) {
@@ -70,5 +74,9 @@ public class PairReader {
 		if (it == null)
 			return null;
 		return it.getVal();
+	}
+
+	public LevelFileReader getReader() {
+		return reader;
 	}
 }

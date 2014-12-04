@@ -102,4 +102,8 @@ public class RawRandomAccessFile extends RawFile {
 
 	}
 
+	@Override
+	public String getPath() {
+		return p.toString();
+	}
 }

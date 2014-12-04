@@ -18,10 +18,13 @@ import edu.jlime.util.compression.CompressionType;
 import edu.jlime.util.compression.Compressor;
 
 public class BlockFile implements Closeable, Iterable<Block> {
-	private static final long MAX_CACHE_SIZE = 1;
-	private static Cache<BlockID, Block> blocks = CacheBuilder.newBuilder()
-			.softValues().maximumSize(MAX_CACHE_SIZE)
-			.expireAfterAccess(5, TimeUnit.SECONDS).build();
+	private static final long MAX_CACHE_SIZE = 50;
+	private Cache<BlockID, Block> blocks = CacheBuilder
+			.newBuilder()
+			.softValues()
+			.maximumSize(MAX_CACHE_SIZE)
+			.expireAfterAccess(5, TimeUnit.SECONDS)
+			.build();
 
 	// boolean reuseDeleted;
 
@@ -42,6 +45,7 @@ public class BlockFile implements Closeable, Iterable<Block> {
 	UUID id = UUID.randomUUID();
 
 	long currentPos = 0;
+	private boolean enableCache;
 
 	// private static WeakHashMap<Block, Boolean> current = new WeakHashMap<>();
 	//
@@ -59,9 +63,10 @@ public class BlockFile implements Closeable, Iterable<Block> {
 		if (pos <= 0)
 			throw new Exception("You shouldn't be writing on pos 0");
 		file.write(pos, bytes);
-		synchronized (blocks) {
-			blocks.put(BlockID.create(id, pos), block);
-		}
+		if (enableCache)
+			synchronized (blocks) {
+				blocks.put(BlockID.create(id, pos), block);
+			}
 
 		// if (header != null && file.length() != header.getFsize())
 		// header.setFileSize(file.length());
@@ -72,26 +77,38 @@ public class BlockFile implements Closeable, Iterable<Block> {
 	}
 
 	private Block getBlock(long pos, int size, boolean create) throws Exception {
-		Block res = null;
-		if (pos >= 0)
-			res = blocks.getIfPresent(BlockID.create(id, pos));
-		if (res == null) {
-			synchronized (blocks) {
-				res = blocks.getIfPresent(pos);
-				if (res == null) {
-					if (pos > 0 && currentPos > pos) {
-						res = Block.read(this, pos);
-					} else if (create) {
-						res = newBlock(new byte[] {}, size, false, true);
-					} else
-						throw new Exception("Block on pos " + pos
-								+ " does not exist at file "
-								+ file.getFile().getPath());
-					blocks.put(BlockID.create(id, pos), res);
+		try {
+			Block res = null;
+			BlockID bid = BlockID.create(id, pos);
+			if (pos >= 0)
+				res = blocks.getIfPresent(bid);
+			if (res == null) {
+				synchronized (blocks) {
+					if (pos >= 0)
+						res = blocks.getIfPresent(bid);
+					if (res == null) {
+						if (pos > 0 && currentPos > pos) {
+							res = Block.read(this, pos);
+						} else if (create) {
+							res = newBlock(new byte[] {}, size, false, true);
+						} else
+							throw new MissingBlockException(pos, file);
+						blocks.put(BlockID.create(id, res.getPos()), res);
+					}
 				}
-			}
+			} else
+				return res;
+			return res;
+		} catch (MissingBlockException e) {
+			throw e;
+		} catch (Exception e) {
+			throw new CorruptedFileException(this, pos, e);
 		}
-		return res;
+	}
+
+	@Override
+	public String toString() {
+		return this.file.getFile().getPath();
 	}
 
 	public Header getHeader() {
@@ -100,7 +117,8 @@ public class BlockFile implements Closeable, Iterable<Block> {
 
 	public static BlockFile open(String path, BlockFileOptions opts)
 			throws Exception {
-		RawFile file = RawFile.getChannelRawFile(path, false, false, false);
+		RawFile file = RawFile.getChannelRawFile(path, false, false, false,
+				false);
 
 		BlockFile ret = new BlockFile(file);
 
@@ -116,7 +134,8 @@ public class BlockFile implements Closeable, Iterable<Block> {
 						+ " for file " + path);
 		} else {
 			file.close();
-			throw new Exception("Corrupted File: File length is 0");
+			throw new Exception("Corrupted File: File " + file.getFile()
+					+ " length is 0");
 		}
 		Block headerBlock = ret.getBlock(8l, -1, false);
 		// headerBlock.setFixed(true);
@@ -133,10 +152,11 @@ public class BlockFile implements Closeable, Iterable<Block> {
 	public static BlockFile create(String path, BlockFileOptions opts)
 			throws Exception {
 		RawFile file = RawFile.getChannelRawFile(path, opts.trunc,
-				opts.readOnly, opts.appendOnly);
+				opts.readOnly, opts.appendOnly, opts.sync);
 		BlockFile ret = new BlockFile(file);
 		ret.minSize = opts.minSize;
 		ret.currentPos = file.length();
+		ret.enableCache = opts.enableCache;
 		if (file.length() == 0l) {
 			ret.reserve(8);
 			file.write(0, DataTypeUtils.longToByteArray(opts.magic));
@@ -227,7 +247,7 @@ public class BlockFile implements Closeable, Iterable<Block> {
 	public void removeBlock(long pos, long size, byte status) throws Exception {
 		synchronized (blocks) {
 			Block.setDeleted(file, status, pos);
-			blocks.invalidate(pos);
+			blocks.invalidate(BlockID.create(id, pos));
 			// List<Long> l = deleted.get(size);
 			// if (l == null) {
 			// l = new ArrayList<>();
@@ -296,9 +316,7 @@ public class BlockFile implements Closeable, Iterable<Block> {
 				.setReadOnly(true));
 	}
 
-	public static BlockFile appendOnly(String path, long magicCheck)
-			throws Exception {
-		return create(path, new BlockFileOptions().setMagic(magicCheck)
-				.setAppendOnly(true));
+	public void flush() throws IOException {
+		file.sync();
 	}
 }

@@ -18,14 +18,14 @@ public class CompactWriterV2 implements Writer {
 		this.level = to;
 	}
 
-	public void add(DataBlock dataBlock) throws Exception {
+	public void addDataBlock(DataBlock dataBlock) throws Exception {
 		// DataBlockIterator it = db.iterator();
 		// while (it.hasNext()) {
 		// it.advance();
 		// add(it.getKey(), it.getVal());
 		// }
 		checkNewFile();
-		currWriter.add(dataBlock);
+		currWriter.addDatablock(dataBlock);
 		check();
 	}
 
@@ -42,7 +42,7 @@ public class CompactWriterV2 implements Writer {
 		float min = Math.min(level.getOpts().maxSize,
 				((level.level() / (float) level.getOpts().sizeModifier) + 1)
 						* level.getOpts().baseSize);
-		if (curr.size() > min
+		if (currWriter.size() > min
 				|| (level.level() > 0 && curr.getMinKey() != null && level
 						.getFile().getLevel(level.level() + 1)
 						.intersectSize(curr.getMinKey(), curr.getMaxKey()) >= level
@@ -78,4 +78,9 @@ public class CompactWriterV2 implements Writer {
 		currWriter.add(k, v);
 		check();
 	}
+
+	// @Override
+	// public List<LevelFile> getFiles() {
+	// return temps;
+	// }
 }

@@ -49,8 +49,8 @@ public class DataBlockReference implements DataBlock {
 	}
 
 	@Override
-	public int size() {
-		return getDB().size();
+	public long size() {
+		return len;
 	}
 
 	@Override
@@ -100,8 +100,8 @@ public class DataBlockReference implements DataBlock {
 	}
 
 	@Override
-	public BlockFile getBlockFile() throws Exception {
-		return file.getFile();
+	public LevelFile getFile() {
+		return file;
 	}
 
 	@Override

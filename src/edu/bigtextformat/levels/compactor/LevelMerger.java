@@ -21,42 +21,29 @@ import edu.bigtextformat.levels.levelfile.LevelFileWriter;
 
 public class LevelMerger {
 
-	public static LevelFile shrinkLevel0(Level level) throws Exception {
+	private static final int RATE = (5 * 1024 * 1024) / 1000; // 1MB per sec
 
-		LevelFile selected = level.get(0);
-
-		Set<LevelFile> level0Merge = level.intersect(selected.getMinKey(),
-				selected.getMaxKey());
-
-		if (!level0Merge.contains(selected))
-			level0Merge.add(selected);
-		// if (files.size() >= file.getOpts().minMergeElements)
-		// {
-		// int levelFileToMerge = 0;
-		// int levelSize = level.size();
-		// while (level0Merge.size() <
-		// Math.max(level.getOpts().minMergeElements,
-		// levelSize - level.getOpts().maxLevelFiles)
-		// && levelFileToMerge < levelSize) {
-		// level0Merge.add(level.get(levelFileToMerge++));
-		// }
-
-		if (level0Merge.size() == 1)
-			return selected;
-
-		LevelFile temp = LevelFile.newFile(level.getCwd().toString(),
-				level.getOpts(), 0, level.getLastLevelIndex());
+	public static void shrink(Level level, Set<LevelFile> level0Merge)
+			throws Exception {
+		// LevelFile temp = LevelFile.newFile(level.getCwd().toString(),
+		// level.getOpts(), level.level(), level.getLastLevelIndex());
 
 		List<PairReader> readers = new ArrayList<>();
 		for (LevelFile levelFile : level0Merge) {
-			PairReader pairReader = levelFile.getPairReader();
-			readers.add(pairReader);
-			pairReader.advance();
+			try {
+				PairReader pairReader;
+				pairReader = levelFile.getPairReader();
+				readers.add(pairReader);
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
 		}
 
 		try {
 			DataBlockWriter db = new DataBlockWriter();
-			LevelFileWriter writer = temp.getWriter();
+			// LevelFileWriter writer = temp.getWriter();
+			CompactWriterV3 writer = new CompactWriterV3(level);
+			writer.setTrottle(RATE);
 			PairReader min = getNext(readers, level.getOpts().format, null);
 			while (min != null && min.getKey() != null) {
 				byte[] key = min.getKey();
@@ -69,27 +56,39 @@ public class LevelMerger {
 				writer.add(it.getKey(), it.getVal());
 				it.advance();
 			}
-			writer.close();
+			writer.persist();
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
 
-		temp.commitAndPersist();
-		level.add(temp);
+		// temp.commitAndPersist();
+		// level.add(temp);
 
 		for (LevelFile levelFile : level0Merge) {
 			level.delete(levelFile);
 		}
 
-		return temp;
+		// return temp;
 	}
 
 	public static void merge(Set<LevelFile> list, final Level current, Level to)
 			throws Exception {
+		// long init = System.currentTimeMillis();
+		BlockFormat format = current.getOpts().format;
+
+		// for (LevelFile levelFile : list) {
+		// System.out.println("From " + levelFile + " min key: "
+		// + format.print(levelFile.getMinKey()) + " max key: "
+		// + format.print(levelFile.getMaxKey()));
+		// }
+
 		Set<LevelFile> intersect = new HashSet<>();
 		for (LevelFile from : list) {
 			intersect.addAll(to.intersect(from.getMinKey(), from.getMaxKey()));
 		}
+
+		if (intersect.size() > 12)
+			System.out.println("Warning, intersecting " + intersect.size());
 
 		// int levelFileToMerge = 0;
 		// while (intersect.size() < Math.max(to.getOpts().minMergeElements,
@@ -110,13 +109,19 @@ public class LevelMerger {
 			LevelFile next = list.iterator().next();
 			current.moveTo(next, to);
 			next.unSetMerging();
+
+			// System.out.println("Moved " + next + " min key: "
+			// + format.print(next.getMinKey()) + " max key: "
+			// + format.print(next.getMaxKey()));
+
 			return;
 		}
 
 		Writer writer = null;
-		if (current.getOpts().splitMergedFiles)
-			writer = new CompactWriterV2(to);
-		else {
+		if (current.getOpts().splitMergedFiles) {
+			writer = new CompactWriterV3(to);
+			((CompactWriterV3) writer).setTrottle(RATE);
+		} else {
 			writer = new SingleFileWriter(to);
 		}
 
@@ -129,7 +134,6 @@ public class LevelMerger {
 					return current.getOpts().format.compare(o1.getMaxKey(),
 							o2.getMaxKey());
 				} catch (Exception e) {
-					// TODO Auto-generated catch block
 					e.printStackTrace();
 				}
 				return 0;
@@ -137,12 +141,16 @@ public class LevelMerger {
 
 		});
 
+		// for (LevelFile levelFile : intersectSorted) {
+		// System.out.println("File " + levelFile + " min key: "
+		// + format.print(levelFile.getMinKey()) + " max key: "
+		// + format.print(levelFile.getMaxKey()));
+		// }
+
 		ArrayList<LevelFileReader> readers = new ArrayList<>();
 		for (LevelFile levelFile : intersectSorted) {
 			readers.add(levelFile.getReader());
 		}
-
-		BlockFormat format = current.getOpts().format;
 
 		List<PairReader> fromReaders = new ArrayList<PairReader>();
 		for (LevelFile from : list) {
@@ -150,42 +158,64 @@ public class LevelMerger {
 		}
 
 		PairReader fromReader = getNext(fromReaders, format, null);
-		// fromReader.advance();
+		// System.out.println("First FROM key: "
+		// + format.print(fromReader.getKey()));
+
 		for (LevelFileReader levelFileReader : readers) {
+			// System.out.println("Current file " + levelFileReader.getFile());
 			while (levelFileReader.hasNext()) {
 				DataBlock dataBlock = levelFileReader.next();
-				// if(dataBlock.indexSize()==1)
-				// System.out.println("Bloque de 1");
+				// System.out.println("Current block: " +
+				// dataBlock.print(format));
 				if (fromReader == null
 						|| format.compare(dataBlock.lastKey(),
 								fromReader.getKey()) < 0) {
-					writer.add(dataBlock);
+					// System.out.println("Writing block: "
+					// + dataBlock.print(format));
+					writer.addDataBlock(dataBlock);
 				} else {
-					DataBlockIterator it = dataBlock.iterator();
-					while (it.hasNext()) {
-						if (fromReader == null) {
-							writer.add(it.getKey(), it.getVal());
-							it.advance();
-						} else {
-							int compare = format.compare(it.getKey(),
-									fromReader.getKey());
-							if (compare < 0) {
+					try {
+						DataBlockIterator it = dataBlock.iterator();
+						while (it.hasNext()) {
+							if (fromReader == null) {
 								writer.add(it.getKey(), it.getVal());
 								it.advance();
 							} else {
-								if (compare == 0)
+								int compare = format.compare(it.getKey(),
+										fromReader.getKey());
+								if (compare < 0) {
+									// System.out.println("Block key "
+									// + format.print(it.getKey())
+									// + " is less than "
+									// + format.print(fromReader.getKey()));
+									writer.add(it.getKey(), it.getVal());
 									it.advance();
-								byte[] key = fromReader.getKey();
-								writer.add(key, fromReader.getValue());
-								fromReader.advance();
-								fromReader = getNext(fromReaders, format, key);
+								} else {
+									// System.out.println("Block key "
+									// + format.print(it.getKey())
+									// + " is greater or equal than "
+									// + format.print(fromReader.getKey()));
+									if (compare == 0) {
+										// System.out
+										// .println("It was equal, ignoring block key.");
+										it.advance();
+									}
+									byte[] key = fromReader.getKey();
+									writer.add(key, fromReader.getValue());
+									fromReader.advance();
+									fromReader = getNext(fromReaders, format,
+											key);
 
+								}
 							}
 						}
+					} catch (Exception e) {
+						e.printStackTrace();
 					}
 				}
 			}
 		}
+
 		while (fromReader != null) {
 			byte[] key = fromReader.getKey();
 			writer.add(key, fromReader.getValue());
@@ -195,13 +225,21 @@ public class LevelMerger {
 
 		writer.persist();
 
+		// System.out.println("Generated:");
+		// for (LevelFile levelFile : writer.getFiles()) {
+		// System.out.println("From " + levelFile + " min key: "
+		// + format.print(levelFile.getMinKey()) + " max key: "
+		// + format.print(levelFile.getMaxKey()));
+		// }
+
 		for (LevelFile levelFile : intersectSorted) {
 			to.delete(levelFile);
 		}
 		for (LevelFile from : list) {
 			current.delete(from);
 		}
-
+		// System.out.println("Merge from Level " + current.level() + " to "
+		// + to.level() + " time: " + (System.currentTimeMillis() - init));
 	}
 
 	public static LevelFile shrink(final Level files) throws Exception {
@@ -232,7 +270,7 @@ public class LevelMerger {
 		for (LevelFileReader levelFileReader : readers) {
 			while (levelFileReader.hasNext()) {
 				DataBlock dataBlock = levelFileReader.next();
-				writer.add(dataBlock);
+				writer.addDatablock(dataBlock);
 			}
 		}
 		writer.close();
@@ -270,9 +308,17 @@ public class LevelMerger {
 							pairReader.getKey()) >= 0))
 				pairReader.advance();
 			if (pairReader.hasNext()) {
-				if (min == null
-						|| format.compare(min.getKey(), pairReader.getKey()) > 0) {
+				if (min == null)
 					min = pairReader;
+				else {
+					int compare = format.compare(min.getKey(),
+							pairReader.getKey());
+					if (compare == 0
+							&& min.getReader().getFile().getCont() < pairReader
+									.getReader().getFile().getCont())
+						min = pairReader;
+					else if (compare > 0)
+						min = pairReader;
 				}
 			}
 		}

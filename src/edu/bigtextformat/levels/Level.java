@@ -2,8 +2,6 @@ package edu.bigtextformat.levels;
 
 import java.io.File;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
@@ -12,10 +10,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
+import edu.bigtextformat.block.BlockFormat;
 import edu.bigtextformat.levels.levelfile.LevelFile;
 
 public class Level implements Iterable<LevelFile> {
+
 	List<LevelFile> files = new ArrayList<>();
+
 	private SortedLevelFile file;
 	private int level;
 
@@ -73,9 +74,8 @@ public class Level implements Iterable<LevelFile> {
 
 	public void add(LevelFile fl) throws Exception {
 
-		file.getManifest().put(fl.getLevel(), fl.getCont(),
-				fl.getFile().getRawFile().getFile().getName(), fl.getMinKey(),
-				fl.getMaxKey());
+		file.getManifest().put(fl.getLevel(), fl.getCont(), fl.getName(),
+				fl.getMinKey(), fl.getMaxKey());
 
 		lock.writeLock().lock();
 		try {
@@ -83,23 +83,11 @@ public class Level implements Iterable<LevelFile> {
 				count.set(fl.getCont() + 1);
 
 			// if (level == 0)
-			int pos = Collections.binarySearch(files, fl,
-					new Comparator<LevelFile>() {
-						@Override
-						public int compare(LevelFile o1, LevelFile o2) {
-							try {
-								return getOpts().format.compare(o1.getMaxKey(),
-										o2.getMaxKey());
-							} catch (Exception e) {
-								e.printStackTrace();
-							}
-							return 0;
-						}
-
-					});
+			int pos = search(fl.getMaxKey(), files, file.getOpts().format);
 			if (pos < 0)
 				pos = -(pos + 1);
 			files.add(pos, fl);
+
 			// else {
 			// int pos = search(fl.getMinKey(), files, getOpts().format);
 			// if (pos < 0)
@@ -108,10 +96,12 @@ public class Level implements Iterable<LevelFile> {
 			//
 			updateMinAndMax();
 			// }
-			if (level == 0 && (size() >= getOpts().compactLevel0Threshold))
+			if (level == 0
+					&& (files.size() >= getOpts().compactLevel0Threshold))
 				file.getCompactor().compact(level);
 			// file.getCompactor().setChanged();
-			else if (size() > getOpts().maxLevelFiles)
+			else if (level > 0
+					&& files.size() > level * getOpts().maxLevelFiles)
 				file.getCompactor().compact(level);
 			// file.getCompactor().setChanged();
 		} finally {
@@ -131,7 +121,11 @@ public class Level implements Iterable<LevelFile> {
 
 	@Override
 	public Iterator<LevelFile> iterator() {
-		return files.iterator();
+		return files().iterator();
+	}
+
+	public synchronized List<LevelFile> files() {
+		return new ArrayList<>(files);
 	}
 
 	public void remove(LevelFile from) throws Exception {
@@ -165,23 +159,8 @@ public class Level implements Iterable<LevelFile> {
 		return file.getOpts();
 	}
 
-	public Set<LevelFile> intersect(byte[] minKey, byte[] maxKey)
-			throws Exception {
-		lock.readLock().lock();
-		try {
-			Set<LevelFile> found = new HashSet<>();
-			for (LevelFile levelFile : files) {
-				if (getOpts().format.compare(levelFile.getMinKey(), maxKey) > 0
-						|| getOpts().format.compare(levelFile.getMaxKey(),
-								minKey) < 0)
-					;
-				else
-					found.add(levelFile);
-			}
-			return found;
-		} finally {
-			lock.readLock().unlock();
-		}
+	public Set<LevelFile> intersect(byte[] min, byte[] max) throws Exception {
+		return intersect(min, max, Integer.MAX_VALUE);
 	}
 
 	public File getCwd() {
@@ -215,28 +194,66 @@ public class Level implements Iterable<LevelFile> {
 
 	}
 
-	public boolean contains(byte[] k) throws Exception {
-		// List<LevelFile> snapshot = null;
-		lock.readLock().lock();
+	public static int search(byte[] k, List<LevelFile> keys, BlockFormat format)
+			throws Exception {
+		int cont = 0;
+		boolean found = false;
+		int lo = 0;
+		int hi = keys.size() - 1;
+		while (lo <= hi && !found) {
+			// Key is in a[lo..hi] or not present.
+			int mid = lo + (hi - lo) / 2;
+			int comp = format.compare(k, keys.get(mid).getMaxKey());
+			if (comp < 0) {
+				hi = mid - 1;
+				cont = lo;
+			} else if (comp > 0) {
+				lo = mid + 1;
+				cont = lo;
+			} else {
+				found = true;
+				cont = mid;
+			}
+			// get(mid);
+		}
+		if (!found)
+			cont = -cont - 1;
+		return cont;
+	}
 
+	public boolean contains(byte[] k) throws Exception {
+		lock.readLock().lock();
 		try {
 			if (files.isEmpty())
 				return false;
-			// snapshot = new ArrayList<LevelFile>(files);
-			//
-			// if (level > 0)
-			// LevelMerger.sortByKey(snapshot, getOpts().format);
-			for (LevelFile levelFile : files) {
-				try {
-					if (levelFile.contains(k, getOpts().format))
-						return true;
-					else if (level > 0
-							&& getOpts().format.compare(k,
-									levelFile.getMinKey()) < 0) {
-						return false;
+
+			if (level > 0
+					&& (getOpts().format.compare(k, minKey) < 0 || getOpts().format
+							.compare(k, maxKey) > 0))
+				return false;
+
+			if (level > 0) {
+				int pos = search(k, files, file.getOpts().format);
+				if (pos < 0)
+					pos = -(pos + 1);
+				if (pos >= files.size())
+					return false;
+				else
+					return files.get(pos).contains(k, getOpts().format);
+			} else {
+
+				for (LevelFile levelFile : files) {
+					try {
+						if (levelFile.contains(k, getOpts().format))
+							return true;
+						// else if (level > 0
+						// && getOpts().format.compare(k,
+						// levelFile.getMinKey()) < 0) {
+						// return false;
+						// }
+					} catch (Exception e) {
+						e.printStackTrace();
 					}
-				} catch (Exception e) {
-					e.printStackTrace();
 				}
 			}
 			return false;
@@ -292,13 +309,99 @@ public class Level implements Iterable<LevelFile> {
 			int cont = 0;
 			for (LevelFile levelFile : files) {
 				if (level > 0
-						&& getOpts().format.compare(min, levelFile.getMaxKey()) > 0)
+						&& getOpts().format.compare(max, levelFile.getMinKey()) < 0)
 					return cont;
-				else if (!(getOpts().format.compare(levelFile.getMinKey(), max) < 0 || getOpts().format
-						.compare(min, levelFile.getMaxKey()) > 0))
+				else if (!(getOpts().format.compare(levelFile.getMinKey(), max) > 0 || getOpts().format
+						.compare(levelFile.getMaxKey(), min) < 0))
 					cont++;
 			}
 			return cont;
+		} finally {
+			lock.readLock().unlock();
+		}
+	}
+
+	public LevelFile getRandom() {
+		lock.readLock().lock();
+		try {
+			return files.get((int) (Math.random() * files.size()));
+		} finally {
+			lock.readLock().unlock();
+		}
+	}
+
+	public Set<LevelFile> intersect(byte[] min, byte[] max, int maxSize)
+			throws Exception {
+		lock.readLock().lock();
+		try {
+			Set<LevelFile> found = new HashSet<>();
+
+			if (files.isEmpty())
+				return found;
+
+			if (getOpts().format.compare(max, minKey) < 0
+					|| getOpts().format.compare(min, maxKey) > 0)
+				return found;
+
+			for (LevelFile levelFile : files) {
+				if (found.size() >= maxSize)
+					return found;
+				if (level > 0
+						&& getOpts().format.compare(max, levelFile.getMinKey()) < 0) {
+					// System.out.println("Current files at level " + level);
+					// for (LevelFile f : files) {
+					// System.out.println("Files " + f + " minKey:"
+					// + getOpts().format.print(f.getMinKey()) +" maxKey:"
+					// + getOpts().format.print(f.getMaxKey()));
+					// }
+					return found;
+				} else if (!(getOpts().format.compare(levelFile.getMinKey(),
+						max) > 0 || getOpts().format.compare(
+						levelFile.getMaxKey(), min) < 0))
+					found.add(levelFile);
+			}
+			return found;
+		} finally {
+			lock.readLock().unlock();
+		}
+	}
+
+	public Pair<byte[], byte[]> getFirstBetween(byte[] from, boolean inclFrom,
+			byte[] to, boolean inclTo, BlockFormat format) throws Exception {
+		lock.readLock().lock();
+		Pair<byte[], byte[]> min = null;
+		try {
+			if (files.isEmpty())
+				return null;
+
+			int toCompare = getOpts().format.compare(to, minKey);
+			if (toCompare < 0 || (toCompare == 0 && !inclTo))
+				return null;
+
+			int fromCompare = getOpts().format.compare(from, maxKey);
+			if (fromCompare > 0 || (toCompare == 0 && !inclFrom))
+				return null;
+
+			for (LevelFile levelFile : files) {
+
+				if (level > 0) {
+					int compare = getOpts().format.compare(to,
+							levelFile.getMinKey());
+					if (compare < 0 || (!inclTo && compare == 0))
+						return null;
+				}
+				Pair<byte[], byte[]> first = levelFile.getFirstBetween(from,
+						inclFrom, to, inclTo, format);
+				if (first != null) {
+					if (level == 0) {
+						if (min==null || getOpts().format.compare(min.getKey(),
+								first.getKey()) > 0)
+							min = first;
+					} else
+						return first;
+				}
+			}
+			return min;
 		} finally {
 			lock.readLock().unlock();
 		}

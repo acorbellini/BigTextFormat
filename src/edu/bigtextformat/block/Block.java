@@ -2,6 +2,8 @@ package edu.bigtextformat.block;
 
 import java.util.zip.CRC32;
 
+import javax.management.MXBean;
+
 import edu.bigtextformat.raw.RawFile;
 import edu.bigtextformat.record.DataType;
 import edu.jlime.util.ByteBuffer;
@@ -87,7 +89,7 @@ public class Block implements DataType<Block> {
 
 	@Override
 	public byte[] toByteArray() {
-		ByteBuffer buff = new ByteBuffer(4 + p.length + 8);
+		ByteBuffer buff = new ByteBuffer(1 + 4 + p.length + 8);
 		if (comp != null)
 			buff.put(comp.getType().getId());
 		else
@@ -97,19 +99,68 @@ public class Block implements DataType<Block> {
 		byte[] built = buff.build();
 
 		byte[] replaced = escape(built);
-		int max = Math.max(maxPayloadSize - 8, 4 + 1 + 4 + replaced.length + 4
-				+ 8);
+		// int max = Math.max(maxPayloadSize - 8, 4 + 1 + 4 + replaced.length +
+		// 4
+		// + 8);
 
-		ByteBuffer ret = new ByteBuffer(max + 8 + 4);
+		int max = 8 + 4 + 1 + 4 + replaced.length + 4 + 8;
+		if (maxPayloadSize > max)
+			max = maxPayloadSize;
+		else
+			System.out.println("Less than max");
+
+		ByteBuffer ret = new ByteBuffer(max);
 		ret.putLong(BLOCK_MAGIC); // 8
-		ret.putInt(max); // Points to end
+		ret.putInt(max); // Points to end (except the first elements).
 		ret.put(getStatus()); // 1
 		ret.putByteArray(replaced); // 4 + N
 		ret.padTo(maxPayloadSize - 4 - 8);
 		ret.putInt(ret.size() + 4 + 8); // 4 Points to start
 		ret.putLong(BLOCK_MAGIC_END); // 8
+		int size = ret.getBuffered().length;
+
 		byte[] build = ret.build();
+		if (size != ret.getBuffered().length)
+			System.out.println("This should not happen.");
 		return build;
+	}
+
+	public ByteBuffer asByteBuffer() {
+		ByteBuffer buff = new ByteBuffer(1 + 4 + p.length + 8);
+		if (comp != null)
+			buff.put(comp.getType().getId());
+		else
+			buff.put((byte) -1);
+		buff.putByteArray(p);// NDATA
+		buff.putLong(getCheckSum(p)); // 8
+		byte[] built = buff.build();
+
+		byte[] replaced = escape(built);
+		// int max = Math.max(maxPayloadSize - 8, 4 + 1 + 4 + replaced.length +
+		// 4
+		// + 8);
+
+		int max = 8 + 4 + 1 + 4 + replaced.length + 4 + 8;
+		if (maxPayloadSize > max)
+			max = maxPayloadSize;
+		else
+			System.out.println("Less than max");
+
+		ByteBuffer ret = new ByteBuffer(max);
+		ret.putLong(BLOCK_MAGIC); // 8
+		ret.putInt(max); // Points to end (except the first elements).
+		ret.put(getStatus()); // 1
+		ret.putByteArray(replaced); // 4 + N
+		ret.padTo(maxPayloadSize - 4 - 8);
+		ret.putInt(ret.size() + 4 + 8); // 4 Points to start
+		ret.putLong(BLOCK_MAGIC_END); // 8
+
+		// int size = ret.getBuffered().length;
+		// byte[] build = ret.build();
+		// if (size != ret.getBuffered().length)
+		// System.out.println("This should not happen.");
+		return ret;
+
 	}
 
 	private static byte[] escape(byte[] built) {
@@ -187,7 +238,7 @@ public class Block implements DataType<Block> {
 
 		byte[] escaped = outer.getByteArray();
 
-		outer.setOffset(8 + pointsToEnd - 4 - 8);
+		outer.setOffset(pointsToEnd - 4 - 8);
 		int pointsToStart = outer.getInt();
 		long endmagic = outer.getLong();
 		if (endmagic != BLOCK_MAGIC_END) {
@@ -297,9 +348,9 @@ public class Block implements DataType<Block> {
 	public static Block read(BlockFile blockFile, long pos) throws Exception {
 		RawFile raw = blockFile.getRawFile();
 		int blockSize = raw.readInt(pos + 8);
-		byte[] data = new byte[blockSize + 8];
+		byte[] data = new byte[blockSize];
 		raw.read(pos, data);
-		return new Block(blockFile, pos, -1, 8 + pos + blockSize)
+		return new Block(blockFile, pos, -1, pos + blockSize)
 				.fromByteArray(data);
 	}
 

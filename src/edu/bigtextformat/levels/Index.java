@@ -56,20 +56,20 @@ public class Index implements DataType<Index> {
 		if (sorted < 0)
 			sorted = -(sorted + 1);
 		sortedBlocks.add(sorted, blockPos);
-		validate(format);
+		// validate(format);
 	}
 
-	private void validate(BlockFormat format) {
-		for (int i = 0; i < keys.size(); i++) {
-			if (i - 1 > 0 && format.compare(keys.get(i - 1), keys.get(i)) > 0) {
-				System.out.println("error al agregar clave");
-			}
-
-			if (i - 1 > 0 && blocks.get(i - 1) > blocks.get(i)) {
-				System.out.println("error al agregar bloque de clave");
-			}
-		}
-	}
+	// private void validate(BlockFormat format) {
+	// for (int i = 0; i < keys.size(); i++) {
+	// if (i - 1 >= 0 && format.compare(keys.get(i - 1), keys.get(i)) > 0) {
+	// System.out.println("error al agregar clave");
+	// }
+	//
+	// if (i - 1 >= 0 && blocks.get(i - 1) > blocks.get(i)) {
+	// System.out.println("error al agregar bloque de clave");
+	// }
+	// }
+	// }
 
 	public byte[] toByteArray() {
 		ByteBuffer buff = new ByteBuffer();

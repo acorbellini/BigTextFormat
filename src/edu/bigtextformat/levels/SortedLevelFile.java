@@ -1,26 +1,39 @@
 package edu.bigtextformat.levels;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
-import java.util.Iterator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map.Entry;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import edu.bigtextformat.block.BlockFormat;
-import edu.bigtextformat.levels.compactor.CompactWriterV2;
-import edu.bigtextformat.levels.compactor.CompactorInterface;
+import edu.bigtextformat.levels.compactor.CompactWriterV3;
+import edu.bigtextformat.levels.compactor.Compactor;
 import edu.bigtextformat.levels.compactor.CompactorV2;
+import edu.bigtextformat.levels.compactor.LevelMerger;
 import edu.bigtextformat.levels.compactor.Writer;
 import edu.bigtextformat.levels.levelfile.LevelFile;
-import edu.bigtextformat.levels.levelfile.LevelFileWriter;
 
 public class SortedLevelFile {
 
-	private volatile MemtableInMemory memTable;
+	ExecutorService exec = Executors.newFixedThreadPool(10);
+
+	Future<Void> fut = null;
+
+	private volatile Memtable memTable;
 
 	ReadWriteLock lock = new ReentrantReadWriteLock();
 
@@ -28,15 +41,15 @@ public class SortedLevelFile {
 
 	private LevelOptions opts;
 
-	List<MemtableInMemory> writing = new ArrayList<>();
+	List<LogFile> writing = new ArrayList<>();
 
 	private File cwd;
 
 	volatile boolean closed;
 
-	private Level0Writer writer;
+	private LogFileWriter writer;
 
-	private CompactorInterface compactor;
+	private Compactor compactor;
 
 	private int maxLevel = 0;
 
@@ -47,58 +60,187 @@ public class SortedLevelFile {
 	private SortedLevelFile(File cwd, LevelOptions opt) throws Exception {
 		this.opts = opt;
 		this.cwd = cwd;
-
 		this.manifest = new Manifest(cwd);
-
 		Collection<LevelFile> levelFiles = manifest.readLevelFiles();
 
-		if (opts == null && !levelFiles.isEmpty())
+		if (opts == null) {
+			if (levelFiles.isEmpty())
+				throw new EmptyDBException(cwd);
 			try {
 				LevelFile first = levelFiles.iterator().next();
-				opts = new LevelOptions().fromByteArray(first.getFile()
-						.getHeader().get("opts"));
+				opts = first.getOpts();
 			} catch (Exception e) {
 				e.printStackTrace();
 			}
-		this.memTable = new MemtableInMemory(opts.format);
-		this.writer = new Level0Writer(this);
+		}
+		this.memTable = new Memtable(cwd.getPath(), opts.format);
+		this.writer = new LogFileWriter(this);
 		this.compactor = new CompactorV2(this, opts.maxCompactorThreads);
 		for (LevelFile levelFile : levelFiles) {
 			addLevel(levelFile);
 		}
-
 	}
 
-	public CompactorInterface getCompactor() {
+	private void recovery() throws Exception {
+		boolean clean = false;
+		while (!clean) {
+			clean = true;
+			for (final Level to : levels) {
+				if (to.level() > 0) {
+					HashSet<String> currentlyMerging = new HashSet<String>();
+					ExecutorService execRec = Executors.newFixedThreadPool(20);
+					for (LevelFile lf : to) {
+						if (!lf.isDeleted()
+								&& !currentlyMerging.contains(lf.getName())) {
+							final Set<LevelFile> i = to.intersect(
+									lf.getMinKey(), lf.getMaxKey());
+							if (i.size() > 1) {
+								boolean alreadyMerging = false;
+								for (LevelFile levelFile : i) {
+									if (currentlyMerging.contains(levelFile
+											.getName()))
+										alreadyMerging = true;
+								}
+								if (!alreadyMerging) {
+									for (LevelFile levelFile : i) {
+										currentlyMerging.add(levelFile
+												.getName());
+									}
+
+									execRec.execute(new Runnable() {
+
+										@Override
+										public void run() {
+											System.out
+													.println("Recovering failed merge among "
+															+ i.size()
+															+ " files. ");
+											// for (LevelFile levelFile : i) {
+											// System.out.println("p:"
+											// + levelFile.getPath()
+											// + " n:"
+											// + levelFile.getName());
+											// }
+											try {
+												LevelMerger.shrink(to, i);
+											} catch (Exception e) {
+												e.printStackTrace();
+											}
+
+										}
+									});
+								}
+								clean = false;
+							}
+						}
+					}
+					execRec.shutdown();
+					execRec.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS);
+				}
+			}
+		}
+	}
+
+	public Compactor getCompactor() {
 		return compactor;
 	}
 
-	protected void writeLevel0(MemtableInMemory dataBlock, boolean flush)
-			throws Exception {
-		if (dataBlock.size() == 0)
-			return;
+	protected void writeLevel0(Memtable table, boolean flush) throws Exception {
+		// if (table.size() == 0)
+		// return;
 		Level level0 = getLevel(0);
-		synchronized (level0) {
-			while (level0.size() >= opts.maxLevel0Files && !flush && !closed)
-				try {
-					compactor.compact(0);
-					level0.wait();
-				} catch (InterruptedException e) {
-					e.printStackTrace();
-				}
-		}
+		// synchronized (level0) {
+		// while (level0.size() >= opts.maxLevel0Files && !flush && !closed)
+		// try {
+		// compactor.compact(0);
+		// level0.wait();
+		// } catch (InterruptedException e) {
+		// e.printStackTrace();
+		// }
+		// }
 		// Integer cont = getLastLevelIndex(0);
+
+		// TreeMap<byte[], byte[]> map = new TreeMap<>(opts.format);
+
+		try {
+			// for (byte[] data : table) {
+			// Operation op = new Operation().fromByteArray(data);
+			// if (op.op.equals(Operations.PUT))
+			// map.put(op.k, op.v);
+			// }
+			writeLevel0Data(table.data, level0);
+
+			table.getLog().delete();
+
+		} catch (Exception e1) {
+			e1.printStackTrace();
+			// table.close();
+			// table.delete();
+		}
+
+	}
+
+	private void writeLevel0Data(TreeMap<byte[], byte[]> data, Level level0)
+			throws Exception {
 		Writer writer = null;
 		if (opts.splitMemtable)
-			writer = new CompactWriterV2(level0);
+			writer = new CompactWriterV3(level0);
 		else
 			writer = new SingleFileWriter(level0);
 
-		for (Entry<byte[], byte[]> e : dataBlock.data.entrySet()) {
+		for (Entry<byte[], byte[]> e : data.entrySet()) {
 			writer.add(e.getKey(), e.getValue());
 		}
 		writer.persist();
+	}
 
+	// protected void writeLevel0(LogFile table, boolean flush) throws Exception
+	// {
+	// // if (table.size() == 0)
+	// // return;
+	// Level level0 = getLevel(0);
+	// synchronized (level0) {
+	// while (level0.size() >= opts.maxLevel0Files && !flush && !closed)
+	// try {
+	// compactor.compact(0);
+	// level0.wait();
+	// } catch (InterruptedException e) {
+	// e.printStackTrace();
+	// }
+	// }
+	// // Integer cont = getLastLevelIndex(0);
+	// Writer writer = null;
+	// if (opts.splitMemtable)
+	// writer = new CompactWriterV3(level0);
+	// else
+	// writer = new SingleFileWriter(level0);
+	//
+	// TreeMap<byte[], byte[]> map = new TreeMap<>(opts.format);
+	//
+	// try {
+	// for (byte[] data : table) {
+	// Operation op = new Operation().fromByteArray(data);
+	// if (op.op.equals(Operations.PUT))
+	// map.put(op.k, op.v);
+	// }
+	//
+	// for (Entry<byte[], byte[]> e : map.entrySet()) {
+	// writer.add(e.getKey(), e.getValue());
+	// }
+	// writer.persist();
+	//
+	// table.delete();
+	//
+	// } catch (Exception e1) {
+	// e1.printStackTrace();
+	// table.close();
+	// table.delete();
+	// }
+	//
+	// }
+
+	public static String getMergedPath(String dir, int level, int cont) {
+		return dir + "/" + level + "-" + cont + ".sst.merged";
 	}
 
 	public static String getPath(String dir, int level, int cont) {
@@ -132,26 +274,58 @@ public class SortedLevelFile {
 		if (closed)
 			throw new Exception("File closed");
 		synchronized (this) {
-			if (memTable.size() >= opts.memTableSize)
+			if (memTable.logSize() >= opts.memTableSize)
 				writeMemtable(false);
-			memTable.insertOrdered(k, val);
+			memTable.put(k, val);
 		}
 	}
 
-	private synchronized void writeMemtable(boolean flush) {
-		if (memTable.size() == 0)
+	private synchronized void writeMemtable(boolean flush) throws Exception {
+		if (memTable.isEmpty())
 			return;
-		synchronized (writing) {
-			writing.add(memTable);
-			writer.setChanged();
-			while (writing.size() >= opts.maxMemTablesWriting && !flush)
-				try {
-					writing.wait();
-				} catch (InterruptedException e) {
-					e.printStackTrace();
+
+		final Memtable current = memTable;
+
+		if (opts.appendOnlyMode) {
+			exec.execute(new Runnable() {
+				@Override
+				public void run() {
+					try {
+						current.closeLog();
+						writeLevel0(current, false);
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					} catch (Exception e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+
 				}
+			});
+		} else {
+			if (fut != null)
+				fut.get();
+			fut = exec.submit(new Callable<Void>() {
+				@Override
+				public Void call() {
+					try {
+						current.closeLog();
+						writeLevel0(current, false);
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					} catch (Exception e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+					return null;
+
+				}
+			});
 		}
-		memTable = new MemtableInMemory(opts.format);
+
+		memTable = new Memtable(cwd.getPath(), opts.format);
 	}
 
 	public boolean exists(byte[] k) {
@@ -167,76 +341,54 @@ public class SortedLevelFile {
 		}
 
 		File[] files = fDir.listFiles();
+		List<File> memtables = new ArrayList<>();
 		for (File file : files) {
-			if (file.getPath().endsWith(".sst.new")
-					|| file.getPath().endsWith(".log.new"))
+			String name = file.getName();
+			if (name.endsWith(".sst.new") || name.endsWith(".log.new"))
 				file.delete();
+			else if (name.endsWith(".LOG")) {
+				Integer currentCount = Integer.valueOf(name.substring(0,
+						name.indexOf(".")));
+
+				Memtable.updateLogCount(currentCount);
+
+				memtables.add(file);
+			}
+
 		}
 
-		if (fDir.list().length == 0) {
-			ret = createNew(fDir, opts);
-		} else
-			ret = openInternal(fDir, opts);
-		if (ret != null)
+		ret = new SortedLevelFile(fDir, opts);
+		if (ret != null) {
+
+			ret.recovery();
 			ret.start();
+
+			if (!opts.appendOnlyMode)
+				for (File path : memtables) {
+					// ret.writing.add();
+					TreeMap<byte[], byte[]> map = new TreeMap<>(opts.format);
+					LogFile table = new LogFile(path);
+					try {
+						for (byte[] data : table) {
+							Operation op = new Operation().fromByteArray(data);
+							if (op.op.equals(Operations.PUT))
+								map.put(op.k, op.v);
+						}
+					} catch (Exception e) {
+						e.printStackTrace();
+					}
+
+					ret.writeLevel0Data(map, ret.getLevel(0));
+					table.delete();
+				}
+			// ret.flushWriting();
+		}
 		return ret;
-	}
-
-	private static SortedLevelFile openInternal(File fDir, LevelOptions opts)
-			throws Exception {
-		// ExecutorService exec = Executors.newFixedThreadPool(20);
-		// final Semaphore sem = new Semaphore(20);
-		// final List<LevelFile> levelFiles = new ArrayList<>();
-		// File[] files = fDir.listFiles();
-		// final int[] maxCount = new int[] { 0 };
-		// for (final File file : files) {
-		// sem.acquire();
-		// exec.execute(new Runnable() {
-		// @Override
-		// public void run() {
-		// try {
-		// if (file.getPath().endsWith(".sst")) {
-		// // System.out.println("Opening " + file);
-		// LevelFile open = LevelFile.open(file);
-		// // System.out.println("Opened " + file);
-		// synchronized (levelFiles) {
-		// levelFiles.add(open);
-		// if (maxCount[0] < open.getCont())
-		// maxCount[0] = open.getCont();
-		// }
-		// }
-		// } catch (Exception e) {
-		// e.printStackTrace();
-		// } finally {
-		// sem.release();
-		// }
-		// }
-		// });
-		// }
-		// exec.shutdown();
-		// exec.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS);
-
-		LevelOptions lo = opts;
-		// if (lo == null)
-		// lo = new LevelOptions().fromByteArray(levelFiles.get(0).getFile()
-		// .getHeader().get("opts"));
-
-		SortedLevelFile f = new SortedLevelFile(fDir, lo);
-		// f.manifest = manifest;
-		// f.count = new AtomicInteger(manifest.getMaxCont());
-
-		return f;
 	}
 
 	private void start() {
 		writer.start();
 		compactor.start();
-
-	}
-
-	private static SortedLevelFile createNew(File fDir, LevelOptions opts)
-			throws Exception {
-		return new SortedLevelFile(fDir, opts);
 	}
 
 	public BlockFormat getFormat() {
@@ -260,7 +412,7 @@ public class SortedLevelFile {
 				level0.notifyAll();
 			}
 
-		flushWriting();
+		// flushWriting();
 		for (Level list : levels) {
 			for (LevelFile levelFile : list) {
 				levelFile.close();
@@ -268,6 +420,9 @@ public class SortedLevelFile {
 		}
 		levels.clear();
 		manifest.close();
+
+		exec.shutdown();
+		exec.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS);
 	}
 
 	public int getMaxLevel() {
@@ -345,12 +500,12 @@ public class SortedLevelFile {
 		try {
 			StringBuilder builder = new StringBuilder();
 			for (int i = 0; i <= getMaxLevel(); i++) {
-				builder.append(i + "-");
 				Level list = levels.get(i);
 				if (list != null) {
 					synchronized (list) {
 						for (LevelFile levelFile : list) {
-							builder.append(levelFile.print(opts.format));
+							builder.append(i + "-"
+									+ levelFile.print(opts.format) + "\n");
 
 						}
 					}
@@ -372,7 +527,7 @@ public class SortedLevelFile {
 
 			writeMemtable(true);
 
-			flushWriting();
+			// flushWriting();
 			//
 			// List<LevelFile> level0 = getLevel(0);
 			// synchronized (level0) {
@@ -389,21 +544,25 @@ public class SortedLevelFile {
 		}
 	}
 
-	private void flushWriting() throws Exception {
-		// System.out.println("Writing level0");
-		while (writeNextMemtable())
-			;
-	}
+	// private void flushWriting() throws Exception {
+	// // System.out.println("Writing level0");
+	// while (writeNextMemtable())
+	// ;
+	// }
 
 	public boolean contains(byte[] k) throws Exception {
 		synchronized (this) {
 			if (memTable.contains(k))
 				return true;
 		}
+
 		synchronized (writing) {
-			for (MemtableInMemory dataBlock : writing) {
-				if (dataBlock.contains(k))
-					return true;
+			for (LogFile log : writing) {
+				for (byte[] bs : log) {
+					Operation op = new Operation().fromByteArray(bs);
+					if (op.op.equals(Operations.PUT) && Arrays.equals(op.k, k))
+						return true;
+				}
 			}
 		}
 
@@ -440,25 +599,27 @@ public class SortedLevelFile {
 
 	AtomicInteger currentWriting = new AtomicInteger(0);
 
-	public boolean writeNextMemtable() throws Exception {
-		MemtableInMemory table = null;
-		synchronized (writing) {
-			int i = currentWriting.get();
-			if (i >= writing.size())
-				return false;
-			table = writing.get(i);
-			currentWriting.incrementAndGet();
-		}
-
-		writeLevel0(table, false);
-
-		synchronized (writing) {
-			writing.remove(table);
-			writing.notifyAll();
-			currentWriting.decrementAndGet();
-		}
-		return true;
-	}
+	// public boolean writeNextMemtable() throws Exception {
+	// LogFile table = null;
+	// synchronized (writing) {
+	// int i = currentWriting.get();
+	// if (i >= writing.size())
+	// return false;
+	// table = writing.get(i);
+	// currentWriting.incrementAndGet();
+	// }
+	//
+	// table.close();
+	//
+	// writeLevel0(table, false);
+	//
+	// synchronized (writing) {
+	// writing.remove(table);
+	// writing.notifyAll();
+	// currentWriting.decrementAndGet();
+	// }
+	// return true;
+	// }
 
 	public RangeIterator rangeIterator(byte[] from, byte[] to) throws Exception {
 		return new RangeIterator(this, from, to);
@@ -475,35 +636,28 @@ public class SortedLevelFile {
 			min = memTable.getFirstIntersect(from, inclFrom, to, inclTo,
 					opts.format);
 		}
-		synchronized (writing) {
-			for (MemtableInMemory dataBlock : writing) {
-				Pair<byte[], byte[]> inWriting = dataBlock.getFirstIntersect(
-						from, inclFrom, to, inclTo, opts.format);
-				if (min == null
-						|| opts.format
-								.compare(min.getKey(), inWriting.getKey()) > 0) {
-					min = inWriting;
-				}
-			}
-		}
+		// synchronized (writing) {
+		// for (LogFile dataBlock : writing) {
+		// Pair<byte[], byte[]> inWriting = dataBlock.getFirstIntersect(
+		// from, inclFrom, to, inclTo, opts.format);
+		// if (min == null
+		// || opts.format
+		// .compare(min.getKey(), inWriting.getKey()) > 0) {
+		// min = inWriting;
+		// }
+		// }
+		// }
 
 		lock.readLock().lock();
 		for (int i = 0; i <= getMaxLevel(); i++) {
 			Level list = levels.get(i);
 			if (list != null) {
-				Iterator<LevelFile> it = list.iterator();
-				boolean found = false;
-				while (it.hasNext() && !found) {
-					LevelFile levelFile = it.next();
-					Pair<byte[], byte[]> inLevelFile = levelFile
-							.getFirstBetween(from, inclFrom, to, inclTo,
-									opts.format);
-					if (inLevelFile != null
-							&& (min == null || opts.format.compare(
-									min.getKey(), inLevelFile.getKey()) > 0)) {
-						min = inLevelFile;
-						found = true;
-					}
+				Pair<byte[], byte[]> inLevelFile = list.getFirstBetween(from,
+						inclFrom, to, inclTo, opts.format);
+				if (inLevelFile != null
+						&& (min == null || opts.format.compare(min.getKey(),
+								inLevelFile.getKey()) > 0)) {
+					min = inLevelFile;
 				}
 			}
 		}
@@ -525,11 +679,11 @@ public class SortedLevelFile {
 				return ret;
 		}
 		synchronized (writing) {
-			for (MemtableInMemory dataBlock : writing) {
-				ret = dataBlock.get(k);
-				if (ret != null)
-					return ret;
-			}
+			// for (LogFile dataBlock : writing) {
+			// ret = dataBlock.get(k);
+			// if (ret != null)
+			// return ret;
+			// }
 		}
 
 		// synchronized (levels) {
@@ -544,5 +698,10 @@ public class SortedLevelFile {
 
 	public Manifest getManifest() {
 		return manifest;
+	}
+
+	public void putIfNotExist(byte[] k, byte[] v) throws Exception {
+		if (!contains(k))
+			put(k, v);
 	}
 }
