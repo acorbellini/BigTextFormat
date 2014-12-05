@@ -122,7 +122,7 @@ public class LevelFile {
 	public void commit() throws Exception {
 		getIndex().setMinKey(minKey);
 		getIndex().setMaxKey(maxKey);
-		getFile().newUncompressedFixedBlock(getIndex().toByteArray());
+		getFile().newFixedBlock(getIndex().toByteArray());
 		getFile().close();
 		fixedIndex = null;
 		state = LevelFileStatus.COMMITED;

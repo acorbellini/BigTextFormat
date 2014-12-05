@@ -21,7 +21,7 @@ public class CompactorV2 implements Compactor {
 	private SortedLevelFile file;
 
 	private volatile int state = NORMAL;
-	private volatile boolean compactLevel0;
+	private volatile boolean forceCompact;
 
 	Set<Integer> running = Collections
 			.newSetFromMap(new ConcurrentHashMap<Integer, Boolean>());
@@ -123,16 +123,15 @@ public class CompactorV2 implements Compactor {
 	 */
 	@Override
 	public synchronized void forcecompact() {
-		waitEmptyRunList();
-
-		compactLevel0 = true;
+		forceCompact = true;
+		waitEmptyRunList();		
 		int currLevels = file.getMaxLevel();
 		for (int i = 0; i <= currLevels; i++) {
 			compact(i);
 		}
 		waitEmptyRunList();
 
-		compactLevel0 = false;
+		forceCompact = false;
 	}
 
 	private void waitEmptyRunList() {
@@ -146,8 +145,8 @@ public class CompactorV2 implements Compactor {
 		}
 	}
 
-	public boolean compactLevel0() {
-		return compactLevel0;
+	public boolean forceCompact() {
+		return forceCompact;
 	}
 
 	public void removeRunning(int level) {

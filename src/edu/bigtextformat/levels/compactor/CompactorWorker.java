@@ -46,7 +46,7 @@ public class CompactorWorker implements Runnable {
 				Set<LevelFile> from = null;
 				if (level == 0) {
 					from = l.intersect(first.getMinKey(), first.getMaxKey(),
-							file.getOpts().compactLevel0Threshold);
+							file.getOpts().maxLevel0Files);
 				} else {
 					from = new HashSet<>();
 					from.add(first);
@@ -75,7 +75,7 @@ public class CompactorWorker implements Runnable {
 						return false;
 
 				Level next = file.getLevel(level + 1);
-				LevelMerger.merge(from, l, next);
+				LevelMerger.merge(from, l, next, !compactor.forceCompact());
 
 				for (LevelFile levelFile : from)
 					levelFile.unSetMerging();
@@ -88,7 +88,7 @@ public class CompactorWorker implements Runnable {
 	}
 
 	private boolean checkLevel0Conditions(Level files) {
-		return (files.size() > 0 && (compactor.compactLevel0() || files.size() >= file
+		return (files.size() > 0 && (compactor.forceCompact() || files.size() >= file
 				.getOpts().compactLevel0Threshold));
 	}
 

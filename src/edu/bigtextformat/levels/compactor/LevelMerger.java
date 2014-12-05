@@ -21,7 +21,7 @@ import edu.bigtextformat.levels.levelfile.LevelFileWriter;
 
 public class LevelMerger {
 
-	private static final int RATE = (10 * 1024 * 1024) / 1000; // 1MB per sec
+	private static final int RATE = (512 * 1024) / 1000; // 1MB per sec
 
 	public static void shrink(Level level, Set<LevelFile> level0Merge)
 			throws Exception {
@@ -43,7 +43,7 @@ public class LevelMerger {
 			DataBlockWriter db = new DataBlockWriter();
 			// LevelFileWriter writer = temp.getWriter();
 			CompactWriterV3 writer = new CompactWriterV3(level);
-			writer.setTrottle(RATE);
+			// writer.setTrottle(RATE);
 			PairReader min = getNext(readers, level.getOpts().format, null);
 			while (min != null && min.getKey() != null) {
 				byte[] key = min.getKey();
@@ -71,8 +71,8 @@ public class LevelMerger {
 		// return temp;
 	}
 
-	public static void merge(Set<LevelFile> list, final Level current, Level to)
-			throws Exception {
+	public static void merge(Set<LevelFile> list, final Level current,
+			Level to, boolean trottle) throws Exception {
 		// long init = System.currentTimeMillis();
 		BlockFormat format = current.getOpts().format;
 
@@ -87,8 +87,8 @@ public class LevelMerger {
 			intersect.addAll(to.intersect(from.getMinKey(), from.getMaxKey()));
 		}
 
-		if (intersect.size() > 12)
-			System.out.println("Warning, intersecting " + intersect.size());
+		// if (intersect.size() > 12)
+		// System.out.println("Warning, intersecting " + intersect.size());
 
 		// int levelFileToMerge = 0;
 		// while (intersect.size() < Math.max(to.getOpts().minMergeElements,
@@ -120,7 +120,8 @@ public class LevelMerger {
 		Writer writer = null;
 		if (current.getOpts().splitMergedFiles) {
 			writer = new CompactWriterV3(to);
-			((CompactWriterV3) writer).setTrottle(RATE);
+			if (trottle)
+				((CompactWriterV3) writer).setTrottle(RATE);
 		} else {
 			writer = new SingleFileWriter(to);
 		}
