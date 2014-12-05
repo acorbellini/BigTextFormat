@@ -90,32 +90,35 @@ public class Block implements DataType<Block> {
 
 	@Override
 	public byte[] toByteArray() {
-		ByteBuffer buff = new ByteBuffer(1 + 4 + p.length + 8);
-		if (comp != null)
-			buff.put(comp.getType().getId());
-		else
-			buff.put((byte) -1);
-		buff.putByteArray(p);// NDATA
-		buff.putLong(getCheckSum(p)); // 8
-		byte[] built = buff.build();
 
-		byte[] replaced = escape(built);
-		// int max = Math.max(maxPayloadSize - 8, 4 + 1 + 4 + replaced.length +
-		// 4
-		// + 8);
-
-		int max = 8 + 4 + 1 + 4 + replaced.length + 4 + 8;
+		int max = 8 + 4 + 1 + (1 + 4 + p.length + 8) + 4 + 8;
 		if (maxPayloadSize > max)
 			max = maxPayloadSize;
-		
+
 		ByteBuffer ret = new ByteBuffer(max);
 		ret.putLong(BLOCK_MAGIC); // 8
 		ret.putInt(max); // Points to end (except the first elements).
 		ret.put(getStatus()); // 1
-		ret.putByteArray(replaced); // 4 + N
-		ret.padTo(maxPayloadSize - 4 - 8);
+		// ret.putByteArray(replaced); // 4 + N
+
+		if (comp != null)
+			ret.put(comp.getType().getId());
+		else
+			ret.put((byte) -1);
+
+		ret.putByteArray(p);// NDATA
+		ret.putLong(getCheckSum(p)); // 8
+
+		int pad = maxPayloadSize - 4 - 8;
+		if (pad > ret.getWritePos()) {
+			ret.padTo(pad);
+		}
 		ret.putInt(ret.size() + 4 + 8); // 4 Points to start
 		ret.putLong(BLOCK_MAGIC_END); // 8
+
+		// if (pos != -1 && fixed && ret.size() > size()) {
+		// throw new Exception("Trying to increase fixed block size");
+		// }
 		byte[] build = ret.build();
 		return build;
 	}
@@ -222,32 +225,34 @@ public class Block implements DataType<Block> {
 	public Block fromByteArray(byte[] data) throws Exception {
 		ByteBuffer outer = new ByteBuffer(data);
 		long magic = outer.getLong();
-		if (magic != BLOCK_MAGIC) {
+		if (magic != BLOCK_MAGIC)
 			throw new Exception("Invalid Block");
-		}
+
 		int pointsToEnd = outer.getInt();
 
 		byte status = outer.get();
 		deleted = ((status & 0x1) == 0x1);
 		fixed = ((status & 0x2) == 0x2);
 
-		byte[] escaped = outer.getByteArray();
+		// byte[] escaped = outer.getByteArray();
+
+		this.maxPayloadSize = data.length;
+		byte compType = outer.get();
+		if (compType != -1) {
+			comp = CompressionType.getByID(compType);
+		}
+		p = outer.getByteArray();
+		checksum = outer.getLong();
 
 		outer.setOffset(pointsToEnd - 4 - 8);
+
 		int pointsToStart = outer.getInt();
 		long endmagic = outer.getLong();
 		if (endmagic != BLOCK_MAGIC_END) {
 			throw new Exception("Invalid Block End");
 		}
 
-		ByteBuffer buff = new ByteBuffer(unescape(escaped));
-		this.maxPayloadSize = data.length;
-		byte compType = buff.get();
-		if (compType != -1) {
-			comp = CompressionType.getByID(compType);
-		}
-		p = buff.getByteArray();
-		checksum = buff.getLong();
+		// ByteBuffer buff = new ByteBuffer(unescape(escaped));
 
 		if (checksum != getCheckSum(p))
 			throw new Exception("Different checksums");
