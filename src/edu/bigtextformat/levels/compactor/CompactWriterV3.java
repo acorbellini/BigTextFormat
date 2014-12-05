@@ -2,9 +2,11 @@ package edu.bigtextformat.levels.compactor;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadFactory;
 
 import edu.bigtextformat.levels.DataBlock;
 import edu.bigtextformat.levels.DataBlockWriter;
@@ -15,9 +17,20 @@ public class CompactWriterV3 implements Writer {
 	// private static final int RATE = 2 * 1024 * 1024 / 1000;
 	private Level level;
 	List<DataBlock> dbs = new ArrayList<>();
+	List<Future<Void>> futures = new ArrayList<>();
 	int currSize = 0;
 	private DataBlockWriter current = new DataBlockWriter();
-	private ExecutorService exec = Executors.newFixedThreadPool(3);
+	private static ExecutorService exec = Executors.newFixedThreadPool(20,
+			new ThreadFactory() {
+				@Override
+				public Thread newThread(Runnable r) {
+					ThreadFactory tf = Executors.defaultThreadFactory();
+					Thread t = tf.newThread(r);
+					t.setName("Compact Writer Thread");
+					t.setDaemon(true);
+					return t;
+				}
+			});
 	boolean trottle = false;
 	private int rate;
 
@@ -60,9 +73,9 @@ public class CompactWriterV3 implements Writer {
 		final List<DataBlock> currentList = dbs;
 		dbs = new ArrayList<DataBlock>();
 		currSize = 0;
-		exec.execute(new Runnable() {
+		futures.add(exec.submit(new Callable<Void>() {
 			@Override
-			public void run() {
+			public Void call() {
 
 				LevelFile curr = null;
 				try {
@@ -109,8 +122,9 @@ public class CompactWriterV3 implements Writer {
 					// TODO Auto-generated catch block
 					e.printStackTrace();
 				}
+				return null;
 			}
-		});
+		}));
 	}
 
 	private void flushCurrent() throws Exception {
@@ -124,8 +138,12 @@ public class CompactWriterV3 implements Writer {
 		flushCurrent();
 		flushDBS();
 
-		exec.shutdown();
-		exec.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS);
+		// exec.shutdown();
+		// exec.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS);
+
+		for (Future<Void> future : futures) {
+			future.get();
+		}
 
 	}
 

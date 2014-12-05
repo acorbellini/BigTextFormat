@@ -1,12 +1,12 @@
 package edu.bigtextformat.block;
 
-import java.util.Comparator;
-
 import edu.bigtextformat.data.BlockData;
 import edu.bigtextformat.record.DataType;
 
-public abstract class BlockFormat implements DataType<BlockFormat>,
-		Comparator<byte[]> {
+public abstract class BlockFormat implements DataType<BlockFormat>
+// ,
+// Comparator<byte[]>
+{
 
 	public abstract BlockFormat getKeyFormat();
 
@@ -23,4 +23,6 @@ public abstract class BlockFormat implements DataType<BlockFormat>,
 	public abstract String print(byte[] bs);
 
 	public abstract BlockFormats getType();
+	
+	public abstract int compare(byte[] d1, byte[] d2);
 }

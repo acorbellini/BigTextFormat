@@ -25,7 +25,7 @@ public interface DataBlock {
 	public abstract String print(BlockFormat format);
 
 	public abstract int indexSize();
-	
+
 	public abstract LevelFile getFile();
 
 	public abstract Pair<byte[], byte[]> getFirstBetween(byte[] from,
@@ -34,5 +34,9 @@ public interface DataBlock {
 	public abstract byte[] get(byte[] k, BlockFormat format);
 
 	public abstract Long getBlockPos();
+
+	public abstract byte[] getKey(int i);
+
+	public abstract byte[] getValue(int i);
 
 }

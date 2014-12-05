@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map.Entry;
@@ -77,6 +78,7 @@ public class SortedLevelFile {
 		this.writer = new LogFileWriter(this);
 		this.compactor = new CompactorV2(this, opts.maxCompactorThreads);
 		for (LevelFile levelFile : levelFiles) {
+			levelFile.setOpts(opts);
 			addLevel(levelFile);
 		}
 	}
@@ -183,9 +185,10 @@ public class SortedLevelFile {
 	private void writeLevel0Data(TreeMap<byte[], byte[]> data, Level level0)
 			throws Exception {
 		Writer writer = null;
-		if (opts.splitMemtable)
+		if (opts.splitMemtable) {
 			writer = new CompactWriterV3(level0);
-		else
+			// ((CompactWriterV3) writer).setTrottle(128 * 1024 / 1000);
+		} else
 			writer = new SingleFileWriter(level0);
 
 		for (Entry<byte[], byte[]> e : data.entrySet()) {
@@ -286,6 +289,8 @@ public class SortedLevelFile {
 
 		final Memtable current = memTable;
 
+		memTable = new Memtable(cwd.getPath(), opts.format);
+
 		if (opts.appendOnlyMode) {
 			exec.execute(new Runnable() {
 				@Override
@@ -325,14 +330,13 @@ public class SortedLevelFile {
 			});
 		}
 
-		memTable = new Memtable(cwd.getPath(), opts.format);
 	}
 
 	public boolean exists(byte[] k) {
 		return false;
 	}
 
-	public static SortedLevelFile open(String dir, LevelOptions opts)
+	public static SortedLevelFile open(String dir, final LevelOptions opts)
 			throws Exception {
 		SortedLevelFile ret = null;
 		File fDir = new File(dir);
@@ -366,7 +370,14 @@ public class SortedLevelFile {
 			if (!opts.appendOnlyMode)
 				for (File path : memtables) {
 					// ret.writing.add();
-					TreeMap<byte[], byte[]> map = new TreeMap<>(opts.format);
+					TreeMap<byte[], byte[]> map = new TreeMap<>(
+							new Comparator<byte[]>() {
+
+								@Override
+								public int compare(byte[] arg0, byte[] arg1) {
+									return opts.format.compare(arg0, arg1);
+								}
+							});
 					LogFile table = new LogFile(path);
 					try {
 						for (byte[] data : table) {
@@ -400,7 +411,11 @@ public class SortedLevelFile {
 	}
 
 	public synchronized void close() throws Exception {
+		exec.shutdown();
+		exec.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS);
+
 		closed = true;
+
 		writer.waitFinished();
 		compactor.waitFinished();
 
@@ -418,11 +433,10 @@ public class SortedLevelFile {
 				levelFile.close();
 			}
 		}
-		levels.clear();
-		manifest.close();
 
-		exec.shutdown();
-		exec.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS);
+		levels.clear();
+
+		manifest.close();
 	}
 
 	public int getMaxLevel() {
@@ -504,8 +518,7 @@ public class SortedLevelFile {
 				if (list != null) {
 					synchronized (list) {
 						for (LevelFile levelFile : list) {
-							builder.append(i + "-"
-									+ levelFile.print(opts.format) + "\n");
+							builder.append(i + "-" + levelFile.print() + "\n");
 
 						}
 					}

@@ -21,7 +21,7 @@ import edu.bigtextformat.levels.levelfile.LevelFileWriter;
 
 public class LevelMerger {
 
-	private static final int RATE = (5 * 1024 * 1024) / 1000; // 1MB per sec
+	private static final int RATE = (10 * 1024 * 1024) / 1000; // 1MB per sec
 
 	public static void shrink(Level level, Set<LevelFile> level0Merge)
 			throws Exception {
@@ -149,7 +149,11 @@ public class LevelMerger {
 
 		ArrayList<LevelFileReader> readers = new ArrayList<>();
 		for (LevelFile levelFile : intersectSorted) {
-			readers.add(levelFile.getReader());
+			try {
+				readers.add(levelFile.getReader());
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
 		}
 
 		List<PairReader> fromReaders = new ArrayList<PairReader>();

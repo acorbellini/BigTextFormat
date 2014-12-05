@@ -25,8 +25,10 @@ public class DataBlockImpl implements DataType<DataBlockImpl>, DataBlock {
 	private long size = 0;
 	private Long blockSize;
 
-	public DataBlockImpl(LevelFile levelFile2) {
+	public DataBlockImpl(LevelFile levelFile2, long pos, long len) {
 		this.levelFile = levelFile2;
+		this.blockPos = pos;
+		this.blockSize = len;
 	}
 
 	public DataBlockImpl(byte[] k, int[] ki, byte[] v, int[] vi) {
@@ -117,12 +119,12 @@ public class DataBlockImpl implements DataType<DataBlockImpl>, DataBlock {
 		return getKey(k_index.length - 1);
 	}
 
-	byte[] getKey(int i) {
+	public byte[] getKey(int i) {
 		return Arrays.copyOfRange(k_list, k_index[i],
 				i + 1 >= k_index.length ? k_list.length : k_index[i + 1]);
 	}
 
-	byte[] getValue(int i) {
+	public byte[] getValue(int i) {
 		return Arrays.copyOfRange(v_list, v_index[i],
 				i + 1 >= v_index.length ? v_list.length : v_index[i + 1]);
 	}

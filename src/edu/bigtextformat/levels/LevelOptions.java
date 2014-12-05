@@ -21,7 +21,7 @@ public class LevelOptions implements DataType<LevelOptions> {
 
 	public Compressor comp = CompressionType.SNAPPY.getComp();
 	public int minMergeElements = 10;
-	public int maxCompactorThreads = 20;
+	public int maxCompactorThreads = 3;
 	public int maxWriterThreads = 20;
 	public int sizeModifier = 3;
 	public float maxSize = 50 * 1024 * 1024;

@@ -123,6 +123,7 @@ public class Manifest {
 				} catch (Exception e) {
 					e.printStackTrace();
 					files.remove(currentFiles.getName());
+					currentFiles.delete();
 				}
 			}
 		}

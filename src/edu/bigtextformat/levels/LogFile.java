@@ -32,11 +32,10 @@ public class LogFile implements Iterable<byte[]> {
 	}
 
 	private BlockFile createLog(String path) throws Exception {
-		return BlockFile.create(
-				path,
-				new BlockFileOptions().setMagic(MAGIC).setEnableCache(false)
-						.setAppendOnly(true)
-						.setComp(CompressionType.SNAPPY.getComp()));
+		return BlockFile.create(path, new BlockFileOptions().setMagic(MAGIC)
+				.setEnableCache(false).setAppendOnly(true)
+		// .setComp(CompressionType.SNAPPY.getComp())
+				);
 	}
 
 	public void append(byte[] opAsBytes) throws Exception {

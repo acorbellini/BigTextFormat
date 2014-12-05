@@ -3,7 +3,7 @@ package edu.bigtextformat.block;
 import edu.jlime.util.compression.Compressor;
 
 public class BlockFileOptions {
-	int headerSize = 32;
+	int headerSize = 128;
 
 	int minSize = 16;
 

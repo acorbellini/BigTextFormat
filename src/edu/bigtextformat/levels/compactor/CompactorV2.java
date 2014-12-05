@@ -30,18 +30,15 @@ public class CompactorV2 implements Compactor {
 
 	public CompactorV2(final SortedLevelFile file, int n) {
 		this.file = file;
-		exec = Executors.newCachedThreadPool(
-		// n,
-				new ThreadFactory() {
+		exec = Executors.newFixedThreadPool(n, new ThreadFactory() {
 
-					@Override
-					public Thread newThread(Runnable r) {
-						Thread t = Executors.defaultThreadFactory()
-								.newThread(r);
-						t.setName("CompactorWorker for file " + file);
-						return t;
-					}
-				});
+			@Override
+			public Thread newThread(Runnable r) {
+				Thread t = Executors.defaultThreadFactory().newThread(r);
+				t.setName("CompactorWorker for file " + file);
+				return t;
+			}
+		});
 	}
 
 	/*

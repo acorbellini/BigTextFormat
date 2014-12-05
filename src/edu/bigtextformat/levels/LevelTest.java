@@ -40,7 +40,7 @@ public class LevelTest {
 				new FormatType<?>[] { FormatTypes.INTEGER.getType() },
 				new String[] { "k" });
 		LevelOptions opts = new LevelOptions().setFormat(format)
-				.setMaxMemTablesWriting(5).setMemTableSize(4 * 1024 * 1024)
+				.setMaxMemTablesWriting(5).setMemTableSize(32 * 1024 * 1024)
 				.setBaseSize(2 * 1024 * 1024).setMaxLevel0Files(4)
 				.setCompactLevel0Threshold(5).setMaxLevelFiles(10)
 				.setMaxBlockSize(128 * 1024)
@@ -60,9 +60,18 @@ public class LevelTest {
 			TIntIterator it = toAdd.iterator();
 			int rawSize = 0;
 			int cont = 0;
+			long last = init;
 			while (it.hasNext()) {
-				if (cont++ % 100000 == 0)
-					System.out.println("Inserted " + cont);
+				if (++cont % 100000 == 0) {
+					System.out
+							.println("Inserted "
+									+ cont
+									+ " Rate "
+									+ (100000000 / (float) (System
+											.currentTimeMillis() - last))
+									+ " ins per sec");
+					last = System.currentTimeMillis();
+				}
 				byte[] byteArray = format.newRecord().set("k", it.next())
 				// .set("k2", -i)
 						.toByteArray();

@@ -3,6 +3,7 @@ package edu.bigtextformat.index;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 
@@ -55,8 +56,15 @@ public class IndexData implements DataType<IndexData> {
 
 	public byte[] getSon(byte[] key) {
 		if (binarySearch) {
-			BlockFormat k = index.getFormat();
-			int pos = Collections.binarySearch(keys, key, k);
+			final BlockFormat format = index.getFormat();
+			int pos = Collections.binarySearch(keys, key,
+					new Comparator<byte[]>() {
+
+						@Override
+						public int compare(byte[] arg0, byte[] arg1) {
+							return format.compare(arg0, arg1);
+						}
+					});
 			if (pos < 0)
 				pos = -(pos + 1);
 			return values.get(pos);
@@ -84,9 +92,16 @@ public class IndexData implements DataType<IndexData> {
 
 	public void put(byte[] key, byte[] vLeft, byte[] vRight) throws Exception {
 		if (binarySearch) {
-			BlockFormat k = index.getFormat();
+			final BlockFormat format = index.getFormat();
 			if (vRight == null) { // leaf nodes
-				int pos = Collections.binarySearch(keys, key, k);
+				int pos = Collections.binarySearch(keys, key,
+						new Comparator<byte[]>() {
+
+							@Override
+							public int compare(byte[] arg0, byte[] arg1) {
+								return format.compare(arg0, arg1);
+							}
+						});
 				if (pos >= 0)
 					values.set(pos, vLeft);
 				else {
@@ -95,7 +110,14 @@ public class IndexData implements DataType<IndexData> {
 					values.add(pos, vLeft);
 				}
 			} else {
-				int pos = Collections.binarySearch(keys, key, k);
+				int pos = Collections.binarySearch(keys, key,
+						new Comparator<byte[]>() {
+
+							@Override
+							public int compare(byte[] arg0, byte[] arg1) {
+								return format.compare(arg0, arg1);
+							}
+						});
 				if (pos >= 0) {
 					values.add(pos, vLeft);
 					// creo q no es necesario.

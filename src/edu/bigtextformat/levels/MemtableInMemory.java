@@ -1,6 +1,7 @@
 package edu.bigtextformat.levels;
 
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 import java.util.SortedMap;
@@ -21,9 +22,15 @@ public class MemtableInMemory {
 	private int size = 0;
 	private BlockFormat format;
 
-	public MemtableInMemory(BlockFormat format) {
+	public MemtableInMemory(final BlockFormat format) {
 		this.format = format;
-		data = new TreeMap<byte[], byte[]>(format);
+		data = new TreeMap<byte[], byte[]>(new Comparator<byte[]>() {
+
+			@Override
+			public int compare(byte[] arg0, byte[] arg1) {
+				return format.compare(arg0, arg1);
+			}
+		});
 	}
 
 	public synchronized void insertOrdered(byte[] k, byte[] val) {

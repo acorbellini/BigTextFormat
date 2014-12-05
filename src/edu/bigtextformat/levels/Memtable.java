@@ -2,6 +2,7 @@ package edu.bigtextformat.levels;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Comparator;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
@@ -11,9 +12,13 @@ import edu.bigtextformat.block.BlockFormat;
 
 public class Memtable {
 
+	private static final int FLUSH_MAP_SIZE = 1000000;
+
 	// List<Operation> table = new ArrayList<>();
 
 	TreeMap<byte[], byte[]> data;
+
+	int estimatedSize = 0;
 
 	private LogFile log;
 
@@ -23,11 +28,17 @@ public class Memtable {
 
 	private BlockFormat format;
 
-	public Memtable(String path, BlockFormat format) throws Exception {
+	public Memtable(String path, final BlockFormat format) throws Exception {
 		this.path = path;
 		// initLog();
 		this.format = format;
-		data = new TreeMap<byte[], byte[]>(format);
+		data = new TreeMap<byte[], byte[]>(new Comparator<byte[]>() {
+
+			@Override
+			public int compare(byte[] arg0, byte[] arg1) {
+				return format.compare(arg0, arg1);
+			}
+		});
 	}
 
 	private void initLog() throws Exception {
@@ -40,28 +51,32 @@ public class Memtable {
 		if (log == null)
 			initLog();
 		Operation e = new Operation(Operations.PUT, k, val);
-
 		// table.add(e);
 		byte[] opAsBytes = e.toByteArray();
+
+		estimatedSize += opAsBytes.length + 30; //estimated ovhead
+
 		log.append(opAsBytes);
 
 		data.put(k, val);
 
-		if (data.size() % 200000 == 0) {
-			log.flush();
-		}
+		// if (data.size() % FLUSH_MAP_SIZE == 0) {
+		// log.flush();
+		// }
 	}
 
 	public long logSize() throws Exception {
-		if (log == null)
-			return 0;
-		return log.size();
+		// if (log == null)
+		// return 0;
+		// return log.size();
+		return estimatedSize;
 	}
 
 	public boolean isEmpty() throws Exception {
-		if (log == null)
-			return true;
-		return log.isEmpty();
+		// if (log == null)
+		// return true;
+		// return log.isEmpty();
+		return estimatedSize == 0;
 	}
 
 	public byte[] lastKey() {

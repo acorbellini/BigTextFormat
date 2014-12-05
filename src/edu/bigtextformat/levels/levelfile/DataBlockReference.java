@@ -1,6 +1,5 @@
 package edu.bigtextformat.levels.levelfile;
 
-import edu.bigtextformat.block.BlockFile;
 import edu.bigtextformat.block.BlockFormat;
 import edu.bigtextformat.levels.DataBlock;
 import edu.bigtextformat.levels.DataBlockIterator;
@@ -112,5 +111,15 @@ public class DataBlockReference implements DataBlock {
 	@Override
 	public Long getBlockPos() {
 		return pos;
+	}
+
+	@Override
+	public byte[] getKey(int i) {
+		return getDB().getKey(i);
+	}
+
+	@Override
+	public byte[] getValue(int i) {
+		return getDB().getValue(i);
 	}
 }

@@ -1,6 +1,7 @@
 package edu.bigtextformat.block;
 
 import java.util.zip.CRC32;
+import java.util.zip.Checksum;
 
 import javax.management.MXBean;
 
@@ -70,8 +71,8 @@ public class Block implements DataType<Block> {
 	}
 
 	public long getCheckSum(byte[] b) {
-		CRC32 crc = new CRC32();
-		crc.update(b);
+		Checksum crc = new CRC32();
+		crc.update(b, 0, b.length);
 		return crc.getValue();
 	}
 
@@ -106,9 +107,7 @@ public class Block implements DataType<Block> {
 		int max = 8 + 4 + 1 + 4 + replaced.length + 4 + 8;
 		if (maxPayloadSize > max)
 			max = maxPayloadSize;
-		else
-			System.out.println("Less than max");
-
+		
 		ByteBuffer ret = new ByteBuffer(max);
 		ret.putLong(BLOCK_MAGIC); // 8
 		ret.putInt(max); // Points to end (except the first elements).
@@ -303,7 +302,7 @@ public class Block implements DataType<Block> {
 		if (comp != null)
 			payload = comp.compress(newPayload);
 
-		updateMaxSize(payload.length + 64);
+		updateMaxSize(payload.length);
 
 		this.p = payload;
 		byte[] bytes = toByteArray();

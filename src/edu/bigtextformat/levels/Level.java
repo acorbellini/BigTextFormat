@@ -391,7 +391,7 @@ public class Level implements Iterable<LevelFile> {
 						return null;
 				}
 				Pair<byte[], byte[]> first = levelFile.getFirstBetween(from,
-						inclFrom, to, inclTo, format);
+						inclFrom, to, inclTo);
 				if (first != null) {
 					if (level == 0) {
 						if (min==null || getOpts().format.compare(min.getKey(),
