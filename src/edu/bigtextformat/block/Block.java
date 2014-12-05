@@ -116,11 +116,7 @@ public class Block implements DataType<Block> {
 		ret.padTo(maxPayloadSize - 4 - 8);
 		ret.putInt(ret.size() + 4 + 8); // 4 Points to start
 		ret.putLong(BLOCK_MAGIC_END); // 8
-		int size = ret.getBuffered().length;
-
 		byte[] build = ret.build();
-		if (size != ret.getBuffered().length)
-			System.out.println("This should not happen.");
 		return build;
 	}
 
