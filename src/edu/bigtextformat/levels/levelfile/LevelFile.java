@@ -8,6 +8,7 @@ import java.util.Iterator;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.UUID;
+import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
@@ -39,12 +40,12 @@ public class LevelFile {
 
 	ReadWriteLock closeLock = new ReentrantReadWriteLock();
 
-	private static final long MAX_CACHE_SIZE = 50;
+	private static final long MAX_CACHE_SIZE = 100;
 
 	private static final long TIME_TO_CLOSE = 5000;
 
-	private Cache<DataBlockID, DataBlock> cache = CacheBuilder.newBuilder()
-			.maximumSize(MAX_CACHE_SIZE).expireAfterAccess(1, TimeUnit.SECONDS)
+	private static Cache<DataBlockID, DataBlock> cache = CacheBuilder
+			.newBuilder().concurrencyLevel(10).maximumSize(MAX_CACHE_SIZE)
 			.softValues().build();
 
 	private volatile LevelFileStatus state = LevelFileStatus.PERSISTED;
@@ -248,30 +249,31 @@ public class LevelFile {
 		return new LevelFileReader(this);
 	}
 
-	public DataBlock getDataBlock(long pos) throws Exception {
-		DataBlock block = cache.getIfPresent(DataBlockID.create(id, pos));
-		if (block == null) {
-			synchronized (cache) {
-				block = cache.getIfPresent(pos);
-				if (block == null) {
-					rl.lock();
-					Block b;
-					long length;
-					try {
-						b = getFile().getBlock(pos, false);
-						length = getFile().length();
-					} finally {
-						rl.unlock();
+	public DataBlock getDataBlock(final long pos) throws Exception {
+		DataBlock block = cache.get(DataBlockID.create(id, pos),
+				new Callable<DataBlock>() {
+
+					@Override
+					public DataBlock call() throws Exception {
+						rl.lock();
+						Block b;
+						long length;
+						try {
+							b = getFile().getBlock(pos, false);
+							length = getFile().length();
+						} finally {
+							rl.unlock();
+						}
+						if (b.getNextBlockPos() == length) // index
+															// position...
+							throw new Exception(
+									"Trying to read index position.");
+						DataBlock block = new DataBlockImpl(LevelFile.this, b
+								.getPos(), b.size()).fromByteArray(b.payload());
+						// cache.put(DataBlockID.create(id, b.getPos()), block);
+						return block;
 					}
-					if (b.getNextBlockPos() == length) // index
-														// position...
-						return null;
-					block = new DataBlockImpl(this, b.getPos(), b.size())
-							.fromByteArray(b.payload());
-					cache.put(DataBlockID.create(id, b.getPos()), block);
-				}
-			}
-		}
+				});
 		return block;
 	}
 

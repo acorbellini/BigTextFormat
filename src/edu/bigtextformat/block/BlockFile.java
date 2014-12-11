@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 
 import com.google.common.cache.Cache;
@@ -18,9 +19,9 @@ import edu.jlime.util.compression.CompressionType;
 import edu.jlime.util.compression.Compressor;
 
 public class BlockFile implements Closeable, Iterable<Block> {
-	private static final long MAX_CACHE_SIZE = 50;
-	private Cache<BlockID, Block> blocks = CacheBuilder.newBuilder()
-			.softValues().maximumSize(MAX_CACHE_SIZE)
+	private static final long MAX_CACHE_SIZE = 0;
+	private static Cache<BlockID, Block> blocks = CacheBuilder.newBuilder()
+			.softValues().maximumSize(MAX_CACHE_SIZE).concurrencyLevel(50)
 			.expireAfterAccess(1, TimeUnit.SECONDS).build();
 
 	// boolean reuseDeleted;
@@ -73,29 +74,36 @@ public class BlockFile implements Closeable, Iterable<Block> {
 		return getBlock(pos, minSize, create);
 	}
 
-	private Block getBlock(long pos, int size, boolean create) throws Exception {
+	private Block getBlock(final long pos, final int size, final boolean create)
+			throws Exception {
 		try {
 			Block res = null;
-			BlockID bid = BlockID.create(id, pos);
-			if (pos >= 0)
-				res = blocks.getIfPresent(bid);
-			if (res == null) {
-				synchronized (blocks) {
-					if (pos >= 0)
-						res = blocks.getIfPresent(bid);
-					if (res == null) {
-						if (pos > 0 && currentPos > pos) {
-							res = Block.read(this, pos);
-						} else if (create) {
-							res = newBlock(new byte[] {}, size, false, true);
-						} else
-							throw new MissingBlockException(pos, file);
-						blocks.put(BlockID.create(id, res.getPos()), res);
-					}
-				}
-			} else
+			if (pos < 0) {
+				if (create)
+					res = newBlock(new byte[] {}, size, false, true);
+				else
+					throw new Exception(
+							"Position is negative and I wasn't told to create it.");
+				blocks.put(BlockID.create(id, res.getPos()), res);
 				return res;
-			return res;
+			} else {
+				BlockID bid = BlockID.create(id, pos);
+				try {
+					return blocks.get(bid, new Callable<Block>() {
+						@Override
+						public Block call() throws Exception {
+							if (pos > 0 && currentPos > pos)
+								return Block.read(BlockFile.this, pos);
+							else if (create)
+								return newBlock(new byte[] {}, size, false,
+										true);
+							throw new Exception();
+						}
+					});
+				} catch (Exception e) {
+					throw new MissingBlockException(pos, file);
+				}
+			}
 		} catch (MissingBlockException e) {
 			throw e;
 		} catch (Exception e) {
@@ -114,8 +122,8 @@ public class BlockFile implements Closeable, Iterable<Block> {
 
 	public static BlockFile open(String path, BlockFileOptions opts)
 			throws Exception {
-		RawFile file = RawFile.getChannelRawFile(path, false, opts.readOnly, false,
-				false);
+		RawFile file = RawFile.getChannelRawFile(path, false, opts.readOnly,
+				false, false);
 
 		BlockFile ret = new BlockFile(file);
 
