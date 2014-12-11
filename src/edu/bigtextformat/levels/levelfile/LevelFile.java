@@ -39,14 +39,13 @@ public class LevelFile {
 
 	ReadWriteLock closeLock = new ReentrantReadWriteLock();
 
-	private static final long MAX_CACHE_SIZE = 5000;
+	private static final long MAX_CACHE_SIZE = 50;
 
 	private static final long TIME_TO_CLOSE = 5000;
 
 	private Cache<DataBlockID, DataBlock> cache = CacheBuilder.newBuilder()
 			.maximumSize(MAX_CACHE_SIZE).expireAfterAccess(1, TimeUnit.SECONDS)
-			// .weakValues()
-			.build();
+			.softValues().build();
 
 	private volatile LevelFileStatus state = LevelFileStatus.PERSISTED;
 
@@ -109,10 +108,14 @@ public class LevelFile {
 
 		long pos = 0;
 
-		if (dataBlock.getBlockPos() != null)
-			pos = getFile().appendBlock(dataBlock.getFile().getFile(),
-					dataBlock.getBlockPos(), dataBlock.getLen());
-		else {
+		if (dataBlock.getBlockPos() != null) {
+			LevelFile otherFile = dataBlock.getFile();
+			otherFile.rl.lock();
+			BlockFile other = otherFile.getFile();
+			pos = getFile().appendBlock(other, dataBlock.getBlockPos(),
+					dataBlock.getLen());
+			otherFile.rl.unlock();
+		} else {
 			Block b = getFile().newFixedBlock(dataBlock.toByteArray());
 			pos = b.getPos();
 		}
@@ -339,10 +342,10 @@ public class LevelFile {
 	@Override
 	public String toString() {
 		try {
-			return "LevelFile [level=" + level + ", minKey="
-					+ Arrays.toString(getIndex().getMinKey()) + ", maxKey="
-					+ Arrays.toString(getIndex().getMaxKey()) + ", cont="
-					+ cont + ", path=" + path + "]";
+			return "LevelFile [level=" + level + ", minKey=" + minKey + ","
+					+ minKey != null ? Arrays.toString(minKey) : "null"
+					+ " maxKey=" + maxKey != null ? Arrays.toString(maxKey)
+					: "null" + ", cont=" + cont + ", path=" + path + "]";
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
@@ -543,8 +546,7 @@ public class LevelFile {
 	}
 
 	public synchronized boolean setMerging(int level) {
-		if (isDeleted() || state.equals(LevelFileStatus.MERGING)
-				|| this.level != level)
+		if (isDeleted() || isMerging() || this.level != level)
 			return false;
 		this.state = LevelFileStatus.MERGING;
 		return true;
@@ -565,5 +567,10 @@ public class LevelFile {
 		} finally {
 			rl.unlock();
 		}
+	}
+
+	public boolean intersectsWith(LevelFile other) throws Exception {
+		return opts.format.compare(getMinKey(), other.getMaxKey()) <= 0
+				&& getOpts().format.compare(getMaxKey(), other.getMinKey()) >= 0;
 	}
 }

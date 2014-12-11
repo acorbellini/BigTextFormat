@@ -15,7 +15,7 @@ import java.util.Random;
 
 public class LevelTest {
 
-	private static final boolean LOAD = false;
+	private static final boolean LOAD = true;
 	private static final boolean JUST_OPEN = false;
 
 	public static void main(String[] args) throws Exception {
@@ -40,9 +40,9 @@ public class LevelTest {
 				new FormatType<?>[] { FormatTypes.INTEGER.getType() },
 				new String[] { "k" });
 		LevelOptions opts = new LevelOptions().setFormat(format)
-				.setMaxMemTablesWriting(5).setMemTableSize(16 * 1024 * 1024)
+				.setMaxMemTablesWriting(5).setMemTableSize(8 * 1024 * 1024)
 				.setBaseSize(2 * 1024 * 1024).setMaxLevel0Files(4)
-				.setCompactLevel0Threshold(2).setMaxLevelFiles(10)
+				.setCompactLevel0Threshold(4).setMaxLevelFiles(10)
 				.setMaxBlockSize(128 * 1024)
 				// .setAppendOnly(true)
 				.setCompressed(CompressionType.SNAPPY.getComp());
@@ -71,6 +71,7 @@ public class LevelTest {
 											.currentTimeMillis() - last))
 									+ " ins per sec");
 					last = System.currentTimeMillis();
+					// file.compact();
 				}
 				byte[] byteArray = format.newRecord().set("k", it.next())
 				// .set("k2", -i)

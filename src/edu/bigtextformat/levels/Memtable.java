@@ -28,7 +28,7 @@ public class Memtable {
 
 	private BlockFormat format;
 
-	public Memtable(String path, final BlockFormat format) throws Exception {
+	public Memtable(String path, final BlockFormat format) {
 		this.path = path;
 		// initLog();
 		this.format = format;
@@ -54,7 +54,7 @@ public class Memtable {
 		// table.add(e);
 		byte[] opAsBytes = e.toByteArray();
 
-		estimatedSize += opAsBytes.length + 30; //estimated ovhead
+		estimatedSize += opAsBytes.length + 30; // estimated ovhead
 
 		log.append(opAsBytes);
 
@@ -104,7 +104,8 @@ public class Memtable {
 	}
 
 	public void closeLog() throws IOException {
-		log.close();
+		if (log != null)
+			log.close();
 	}
 
 	public LogFile getLog() {
@@ -153,5 +154,17 @@ public class Memtable {
 		if (currentCount > logCount.get())
 			logCount.set(currentCount);
 
+	}
+
+	public static Memtable fromFile(File path2, BlockFormat format)
+			throws Exception {
+		Memtable mem = new Memtable(path2.getPath(), format);
+		mem.log = new LogFile(path2);
+		for (byte[] array : mem.log) {
+			Operation op = new Operation().fromByteArray(array);
+			if (op.op.equals(Operations.PUT))
+				mem.data.put(op.k, op.v);
+		}
+		return mem;
 	}
 }

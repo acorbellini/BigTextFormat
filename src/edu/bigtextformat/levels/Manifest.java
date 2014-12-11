@@ -2,11 +2,22 @@ package edu.bigtextformat.levels;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.CopyOption;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import edu.bigtextformat.block.Block;
 import edu.bigtextformat.block.BlockFile;
@@ -20,33 +31,40 @@ public class Manifest {
 
 	private static final long MAGIC = DataTypeUtils.byteArrayToLong("MANIFEST"
 			.getBytes());
+	private static final int READ = 0;
+	private static final int APPEND = 1;
+	private static final int COMPACT = 2;
 	BlockFile log;
-	HashSet<String> added = new HashSet<>();
-	HashMap<String, LevelFile> files = new HashMap<>();
-
-	int maxCont = 0;
+	Set<String> inFile = Collections
+			.newSetFromMap(new ConcurrentHashMap<String, Boolean>());
 
 	long id = System.nanoTime();
 
 	private String path;
 
 	private File fDir;
+	private int mode = -1;
 
 	public Manifest(File fDir) throws Exception {
 		this.path = fDir.getPath() + "/MANIFEST.log";
 		this.fDir = fDir;
 		try {
-			log = BlockFile.open(path, MAGIC);
-
+			readMode();
 		} catch (Exception e) {
 		}
 		if (log == null || log.isEmpty()) {
 			if (log != null && log.isEmpty())
 				log.delete();
-			log = createLog(path);
-			checkOtherFiles(log);
-		} else {
-			log = compact(log, true);
+
+			Path old = Paths.get(fDir.getPath() + "/MANIFEST.log.old");
+			if (Files.exists(old)) {
+				Files.move(old, Paths.get(path));
+				readMode();
+			} else {
+				appendMode();
+				Map<String, LevelFile> files = checkOtherFiles(new HashMap<String, LevelFile>());
+				addAll(files, log);
+			}
 		}
 
 	}
@@ -59,104 +77,167 @@ public class Manifest {
 						.setComp(CompressionType.SNAPPY.getComp()));
 	}
 
-	public synchronized BlockFile compact(BlockFile oldLog, boolean addFiles)
+	public HashMap<String, LevelFile> readFiles() throws IOException, Exception {
+		HashMap<String, LevelFile> files = new HashMap<String, LevelFile>(
+				200000);
+
+		inFile.clear();
+
+		HashSet<String> inDir = new HashSet<String>();
+		for (String string : fDir.list()) {
+			inDir.add(string);
+		}
+
+		readMode();
+
+		for (Block block : log) {
+			ByteBuffer buff = new ByteBuffer(block.payload());
+			int level = buff.getInt();
+			int cont = buff.getInt();
+			String levelFileName = buff.getString();
+			byte[] minKey = buff.getByteArray();
+			byte[] maxKey = buff.getByteArray();
+
+			// if (Files.exists(Paths.get(fDir.getPath() + "/" +
+			// levelFileName))) {
+			if (inDir.contains(levelFileName)) {
+				if (!files.containsKey(levelFileName)) {
+					files.put(
+							levelFileName,
+							LevelFile.open(level, cont, fDir.getPath() + "/"
+									+ levelFileName, minKey, maxKey));
+					inFile.add(levelFileName);
+				} else {
+					// System.out.println("Was already there.");
+				}
+
+			}
+		}
+
+		Map<String, LevelFile> checkOtherFiles = checkOtherFiles(files);
+		if (!checkOtherFiles.isEmpty()) {
+			files.putAll(checkOtherFiles);
+			compact(files);
+		}
+
+		appendMode();
+
+		return files;
+	}
+
+	private void appendMode() throws Exception {
+		if (mode == APPEND)
+			return;
+		if (log != null)
+			log.close();
+		log = createLog(path);
+		mode = APPEND;
+	}
+
+	private Map<String, LevelFile> checkOtherFiles(
+			final HashMap<String, LevelFile> files) {
+		ExecutorService exec = Executors.newFixedThreadPool(100);
+		final Map<String, LevelFile> ret = new ConcurrentHashMap<>();
+		for (final File currentFile : fDir.listFiles()) {
+			exec.execute(new Runnable() {
+
+				@Override
+				public void run() {
+					String name = currentFile.getName();
+					if (name.endsWith(".sst") && !files.containsKey(name)) {
+						Integer level = Integer.valueOf(name.substring(0,
+								name.indexOf("-")));
+						Integer cont = Integer.valueOf(name.substring(
+								name.indexOf("-") + 1, name.indexOf(".")));
+
+						try {
+							LevelFile open = LevelFile.open(level, cont,
+									fDir.getPath() + "/" + name, null, null);
+							open.getMinKey();
+							open.getMaxKey();
+							ret.put(currentFile.getName(), open);
+						} catch (Exception e) {
+							e.printStackTrace();
+							ret.remove(currentFile.getName());
+							currentFile.delete();
+						}
+					}
+				}
+			});
+		}
+		exec.shutdown();
+		try {
+			exec.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS);
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
+		return ret;
+	}
+
+	private synchronized void compact(HashMap<String, LevelFile> files)
 			throws Exception, IOException {
+
 		String newPath = fDir.getPath() + "/MANIFEST.log.new";
+
+		String backup = fDir.getPath() + "/MANIFEST.log.old";
+
+		Files.copy(Paths.get(path), Paths.get(backup),
+				StandardCopyOption.REPLACE_EXISTING);
+
+		inFile.clear();
+
 		BlockFile current = createLog(newPath);
 		try {
-
-			for (Block block : oldLog) {
-				ByteBuffer buff = new ByteBuffer(block.payload());
-				int level = buff.getInt();
-				int cont = buff.getInt();
-				String levelFileName = buff.getString();
-				byte[] minKey = buff.getByteArray();
-				byte[] maxKey = buff.getByteArray();
-
-				if (Files
-						.exists(Paths.get(fDir.getPath() + "/" + levelFileName))) {
-					if (cont > maxCont)
-						maxCont = cont;
-					if (!files.containsKey(levelFileName)) {
-						files.put(
-								levelFileName,
-								LevelFile.open(level, cont, fDir.getPath()
-										+ "/" + levelFileName, minKey, maxKey));
-						put(current, level, cont, levelFileName, minKey, maxKey);
-					} else {
-						System.out.println("Was already there.");
-					}
-
-				}
-			}
+			addAll(files, current);
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
-		checkOtherFiles(current);
 
 		try {
-			oldLog.delete();
+			log.delete();
 			current.close();
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
-
+		mode = COMPACT;
 		Files.move(Paths.get(newPath), Paths.get(path));
-		return createLog(path);
+		appendMode();
 	}
 
-	private void checkOtherFiles(BlockFile current) throws Exception {
-		for (File currentFiles : fDir.listFiles()) {
-			String name = currentFiles.getName();
-			if (name.endsWith(".sst") && !files.containsKey(name)) {
-				Integer level = Integer.valueOf(name.substring(0,
-						name.indexOf("-")));
-				Integer cont = Integer.valueOf(name.substring(
-						name.indexOf("-") + 1, name.indexOf(".")));
+	private void readMode() throws IOException, Exception {
+		if (mode == READ)
+			return;
+		if (log != null)
+			log.close();
+		log = BlockFile.open(path, MAGIC);
+		mode = READ;
+	}
 
-				try {
-					LevelFile open = LevelFile.open(level, cont, fDir.getPath()
-							+ "/" + name, null, null);
-					files.put(currentFiles.getName(), open);
-					put(current, level, cont, name, open.getMinKey(),
-							open.getMaxKey());
-				} catch (Exception e) {
-					e.printStackTrace();
-					files.remove(currentFiles.getName());
-					currentFiles.delete();
-				}
+	private void addAll(Map<String, LevelFile> files, final BlockFile current) {
+
+		for (final LevelFile lf : files.values()) {
+			try {
+				put(current, lf.getLevel(), lf.getCont(), lf.getName(),
+						lf.getMinKey(), lf.getMaxKey());
+			} catch (Exception e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
 			}
 		}
-	}
-
-	public synchronized void compact() throws Exception {
-		log.close();
-		added.clear();
-		log = BlockFile.open(path, MAGIC);
-		log = compact(log, false);
-	}
-
-	public int getMaxCount() {
-		return maxCont;
-	}
-
-	public LevelFile getFirstLevelFile() {
-		return files.get(0);
-	}
-
-	public Collection<LevelFile> readLevelFiles() {
-		Collection<LevelFile> ret = files.values();
-		files = new HashMap<>();
-		// added.clear();
-		return ret;
 	}
 
 	public void put(BlockFile current, int level, int cont,
 			String levelFileName, byte[] minKey, byte[] maxKey)
 			throws Exception {
-		if (added.contains(levelFileName))
+		if (inFile.contains(levelFileName))
 			return;
-		added.add(levelFileName);
+		else
+			synchronized (inFile) {
+				if (inFile.contains(levelFileName))
+					return;
+				inFile.add(levelFileName);
+			}
+
 		ByteBuffer buff = new ByteBuffer();
 		buff.putInt(level);
 		buff.putInt(cont);
@@ -175,6 +256,10 @@ public class Manifest {
 
 	public void close() throws IOException {
 		log.close();
+	}
+
+	public void compact() throws IOException, Exception {
+		compact(readFiles());
 	}
 
 }

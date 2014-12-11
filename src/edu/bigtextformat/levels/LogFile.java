@@ -10,15 +10,17 @@ import edu.bigtextformat.block.Block;
 import edu.bigtextformat.block.BlockFile;
 import edu.bigtextformat.block.BlockFileOptions;
 import edu.jlime.util.DataTypeUtils;
-import edu.jlime.util.compression.CompressionType;
 
 public class LogFile implements Iterable<byte[]> {
 
 	private static final long MAGIC = DataTypeUtils.byteArrayToLong("LOGFILE_"
 			.getBytes());
+	private static final int READ = 0;
+	private static final int APPEND = 1;
 	private BlockFile file;
 	private String p;
 	private String name;
+	private int mode = -1;
 
 	public LogFile(File filename) throws Exception {
 		this.p = filename.getPath();
@@ -26,9 +28,12 @@ public class LogFile implements Iterable<byte[]> {
 	}
 
 	public void appendMode() throws Exception {
+		if (mode == APPEND)
+			return;
 		if (file != null)
 			file.close();
 		file = createLog(p);
+		mode = APPEND;
 	}
 
 	private BlockFile createLog(String path) throws Exception {
@@ -53,21 +58,22 @@ public class LogFile implements Iterable<byte[]> {
 	}
 
 	public byte[] get(byte[] k) throws Exception {
-		checkOpened();
+		readMode();
 		return null;
 	}
 
-	private synchronized void checkOpened() throws Exception {
-		if (file == null) {
-			file = BlockFile.open(p, MAGIC);
-		}
-
+	synchronized void readMode() throws Exception {
+		if (mode == READ)
+			return;
+		close();
+		file = BlockFile.open(p, MAGIC);
+		mode = READ;
 	}
 
 	@Override
 	public Iterator<byte[]> iterator() {
 		try {
-			checkOpened();
+			readMode();
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
@@ -115,5 +121,4 @@ public class LogFile implements Iterable<byte[]> {
 	public void flush() throws IOException {
 		file.flush();
 	}
-
 }

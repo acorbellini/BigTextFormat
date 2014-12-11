@@ -15,6 +15,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReadWriteLock;
@@ -27,12 +28,13 @@ import edu.bigtextformat.levels.compactor.CompactorV2;
 import edu.bigtextformat.levels.compactor.LevelMerger;
 import edu.bigtextformat.levels.compactor.Writer;
 import edu.bigtextformat.levels.levelfile.LevelFile;
+import gnu.trove.set.hash.TIntHashSet;
 
 public class SortedLevelFile {
 
 	ExecutorService exec = Executors.newFixedThreadPool(10);
 
-	Future<Void> fut = null;
+	List<Future<Void>> fut = new ArrayList<Future<Void>>();
 
 	private volatile Memtable memTable;
 
@@ -62,7 +64,7 @@ public class SortedLevelFile {
 		this.opts = opt;
 		this.cwd = cwd;
 		this.manifest = new Manifest(cwd);
-		Collection<LevelFile> levelFiles = manifest.readLevelFiles();
+		Collection<LevelFile> levelFiles = manifest.readFiles().values();
 
 		if (opts == null) {
 			if (levelFiles.isEmpty())
@@ -84,64 +86,79 @@ public class SortedLevelFile {
 	}
 
 	private void recovery() throws Exception {
+		ExecutorService execRec = Executors.newFixedThreadPool(20);
+		List<Future<Void>> futures = new ArrayList<Future<Void>>();
+
+		List<LevelFile> current = new ArrayList<LevelFile>();
 		boolean clean = false;
 		while (!clean) {
 			clean = true;
+			futures.clear();
+			current.clear();
 			for (final Level to : levels) {
 				if (to.level() > 0) {
-					HashSet<String> currentlyMerging = new HashSet<String>();
-					ExecutorService execRec = Executors.newFixedThreadPool(20);
-					for (LevelFile lf : to) {
-						if (!lf.isDeleted()
-								&& !currentlyMerging.contains(lf.getName())) {
-							final Set<LevelFile> i = to.intersect(
-									lf.getMinKey(), lf.getMaxKey());
-							if (i.size() > 1) {
-								boolean alreadyMerging = false;
-								for (LevelFile levelFile : i) {
-									if (currentlyMerging.contains(levelFile
-											.getName()))
-										alreadyMerging = true;
-								}
-								if (!alreadyMerging) {
-									for (LevelFile levelFile : i) {
-										currentlyMerging.add(levelFile
-												.getName());
+					List<LevelFile> files = to.files();
+					for (int i = 0; i < files.size(); i++) {
+
+						LevelFile levelFile = files.get(i);
+
+						if (current.contains(levelFile))
+							continue;
+
+						final Set<LevelFile> intersection = new HashSet<LevelFile>();
+						// final Set<LevelFile> intersection =
+						// checkIntersection(
+						// levelFile, files, i + 1);
+
+						intersection.add(levelFile);
+						if (i < files.size() - 1
+								&& levelFile.intersectsWith(files.get(i + 1)))
+							intersection.add(files.get(i + 1));
+
+						if (intersection.size() > 1) {
+
+							clean = false;
+
+							current.addAll(intersection);
+
+							futures.add(execRec.submit(new Callable<Void>() {
+
+								@Override
+								public Void call() throws Exception {
+									System.out
+											.println("Recovering failed merge among "
+													+ intersection.size()
+													+ " files. ");
+									try {
+										LevelMerger.shrink(to, intersection);
+									} catch (Exception e) {
+										e.printStackTrace();
 									}
-
-									execRec.execute(new Runnable() {
-
-										@Override
-										public void run() {
-											System.out
-													.println("Recovering failed merge among "
-															+ i.size()
-															+ " files. ");
-											// for (LevelFile levelFile : i) {
-											// System.out.println("p:"
-											// + levelFile.getPath()
-											// + " n:"
-											// + levelFile.getName());
-											// }
-											try {
-												LevelMerger.shrink(to, i);
-											} catch (Exception e) {
-												e.printStackTrace();
-											}
-
-										}
-									});
+									return null;
 								}
-								clean = false;
-							}
+							}));
 						}
 					}
-					execRec.shutdown();
-					execRec.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS);
 				}
 			}
+			for (Future<Void> future : futures) {
+				future.get();
+			}
 		}
+		execRec.shutdown();
 	}
+
+	// private Set<LevelFile> checkIntersection(LevelFile levelFile,
+	// List<LevelFile> files, int i) throws Exception {
+	// Set<LevelFile> intersection = new HashSet<LevelFile>();
+	// intersection.add(levelFile);
+	// for (int j = i; j < files.size(); j++) {
+	// LevelFile levelFile2 = files.get(j);
+	// if (levelFile.intersectsWith(levelFile2))
+	// intersection.add(levelFile2);
+	// }
+	// return intersection;
+	// }
 
 	public Compactor getCompactor() {
 		return compactor;
@@ -182,11 +199,23 @@ public class SortedLevelFile {
 
 	}
 
+	private ExecutorService level0Exec = Executors.newFixedThreadPool(5,
+			new ThreadFactory() {
+				@Override
+				public Thread newThread(Runnable r) {
+					ThreadFactory tf = Executors.defaultThreadFactory();
+					Thread t = tf.newThread(r);
+					t.setName("Compact Writer Thread");
+					t.setDaemon(true);
+					return t;
+				}
+			});
+
 	private void writeLevel0Data(TreeMap<byte[], byte[]> data, Level level0)
 			throws Exception {
 		Writer writer = null;
 		if (opts.splitMemtable) {
-			writer = new CompactWriterV3(level0);
+			writer = new CompactWriterV3(level0, level0Exec);
 			// ((CompactWriterV3) writer).setTrottle(128 * 1024 / 1000);
 		} else
 			writer = new SingleFileWriter(level0);
@@ -291,45 +320,37 @@ public class SortedLevelFile {
 
 		memTable = new Memtable(cwd.getPath(), opts.format);
 
-		if (opts.appendOnlyMode) {
-			exec.execute(new Runnable() {
-				@Override
-				public void run() {
-					try {
-						current.closeLog();
-						writeLevel0(current, false);
-					} catch (IOException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					} catch (Exception e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
+		if (!opts.appendOnlyMode)
+			for (Future<Void> future : fut) {
+				future.get();
+			}
+		scheduleMemtable(current);
 
+		if (flush)
+			for (Future<Void> future : fut) {
+				future.get();
+			}
+
+	}
+
+	private void scheduleMemtable(final Memtable current) {
+		fut.add(exec.submit(new Callable<Void>() {
+			@Override
+			public Void call() {
+				try {
+					current.closeLog();
+					writeLevel0(current, false);
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				} catch (Exception e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
 				}
-			});
-		} else {
-			if (fut != null)
-				fut.get();
-			fut = exec.submit(new Callable<Void>() {
-				@Override
-				public Void call() {
-					try {
-						current.closeLog();
-						writeLevel0(current, false);
-					} catch (IOException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					} catch (Exception e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
-					return null;
+				return null;
 
-				}
-			});
-		}
-
+			}
+		}));
 	}
 
 	public boolean exists(byte[] k) {
@@ -367,31 +388,11 @@ public class SortedLevelFile {
 			ret.recovery();
 			ret.start();
 
-			if (!opts.appendOnlyMode)
-				for (File path : memtables) {
-					// ret.writing.add();
-					TreeMap<byte[], byte[]> map = new TreeMap<>(
-							new Comparator<byte[]>() {
-
-								@Override
-								public int compare(byte[] arg0, byte[] arg1) {
-									return opts.format.compare(arg0, arg1);
-								}
-							});
-					LogFile table = new LogFile(path);
-					try {
-						for (byte[] data : table) {
-							Operation op = new Operation().fromByteArray(data);
-							if (op.op.equals(Operations.PUT))
-								map.put(op.k, op.v);
-						}
-					} catch (Exception e) {
-						e.printStackTrace();
-					}
-
-					ret.writeLevel0Data(map, ret.getLevel(0));
-					table.delete();
-				}
+			// if (!opts.appendOnlyMode)
+			for (File path : memtables) {
+				Memtable mem = Memtable.fromFile(path, opts.format);
+				ret.scheduleMemtable(mem);
+			}
 			// ret.flushWriting();
 		}
 		return ret;

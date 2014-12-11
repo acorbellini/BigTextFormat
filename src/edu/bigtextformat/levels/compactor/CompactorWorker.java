@@ -28,8 +28,9 @@ public class CompactorWorker implements Runnable {
 				;
 		} catch (Exception e) {
 			e.printStackTrace();
+		} finally {
+			compactor.removeRunning(level);
 		}
-		compactor.removeRunning(level);
 	}
 
 	private Boolean exec() throws Exception {
@@ -45,8 +46,13 @@ public class CompactorWorker implements Runnable {
 				LevelFile first = l.getRandom();
 				Set<LevelFile> from = null;
 				if (level == 0) {
-					from = l.intersect(first.getMinKey(), first.getMaxKey(),
-							file.getOpts().maxLevel0Files);
+					if (compactor.isForceCompact())
+						from = l.intersect(first.getMinKey(), first.getMaxKey());
+					else
+						from = l.intersect(first.getMinKey(),
+								first.getMaxKey(),
+								file.getOpts().maxLevel0Files);
+
 				} else {
 					from = new HashSet<>();
 					from.add(first);
@@ -75,7 +81,7 @@ public class CompactorWorker implements Runnable {
 						return false;
 
 				Level next = file.getLevel(level + 1);
-				LevelMerger.merge(from, l, next, !compactor.forceCompact());
+				LevelMerger.merge(from, l, next, !compactor.isForceCompact());
 
 				for (LevelFile levelFile : from)
 					levelFile.unSetMerging();
@@ -88,7 +94,7 @@ public class CompactorWorker implements Runnable {
 	}
 
 	private boolean checkLevel0Conditions(Level files) {
-		return (files.size() > 0 && (compactor.forceCompact() || files.size() >= file
+		return (files.size() > 0 && (compactor.isForceCompact() || files.size() >= file
 				.getOpts().compactLevel0Threshold));
 	}
 

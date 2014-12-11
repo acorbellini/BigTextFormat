@@ -20,7 +20,7 @@ public class CompactWriterV3 implements Writer {
 	List<Future<Void>> futures = new ArrayList<>();
 	int currSize = 0;
 	private DataBlockWriter current = new DataBlockWriter();
-	private static ExecutorService exec = Executors.newFixedThreadPool(20,
+	private static ExecutorService execShared = Executors.newFixedThreadPool(4,
 			new ThreadFactory() {
 				@Override
 				public Thread newThread(Runnable r) {
@@ -33,9 +33,16 @@ public class CompactWriterV3 implements Writer {
 			});
 	boolean trottle = false;
 	private int rate;
+	private ExecutorService exec;
+	byte[] minKey;
 
 	public CompactWriterV3(Level to) {
+		this(to, execShared);
+	}
+
+	public CompactWriterV3(Level to, ExecutorService execShared2) {
 		this.level = to;
+		this.exec = execShared2;
 	}
 
 	public void setTrottle(int rate) {
@@ -50,9 +57,17 @@ public class CompactWriterV3 implements Writer {
 
 	private void add(DataBlock dataBlock) throws Exception {
 		dbs.add(dataBlock);
+
+		try {
+			if (dbs.size() == 1)
+				minKey = dbs.get(0).firstKey();
+		} catch (Exception e) {
+			dbs.remove(dataBlock);
+			throw e;
+		}
+
 		currSize += dataBlock.size();
 
-		byte[] minKey = dbs.get(0).firstKey();
 		byte[] maxKey = dataBlock.lastKey();
 
 		float min = Math.min(level.getOpts().maxSize,
@@ -63,7 +78,6 @@ public class CompactWriterV3 implements Writer {
 						.getLevel(level.level() + 1)
 						.intersectSize(minKey, maxKey) >= level.getOpts().intersectSplit)) {
 			flushDBS();
-
 		}
 	}
 
@@ -119,7 +133,6 @@ public class CompactWriterV3 implements Writer {
 				try {
 					level.add(curr);
 				} catch (Exception e) {
-					// TODO Auto-generated catch block
 					e.printStackTrace();
 				}
 				return null;

@@ -25,7 +25,7 @@ public class LevelOptions implements DataType<LevelOptions> {
 	public int maxWriterThreads = 20;
 	public int sizeModifier = 3;
 	public float maxSize = 50 * 1024 * 1024;
-	public int intersectSplit = 10;
+	public int intersectSplit = 8;
 	public boolean splitMemtable = true;
 	public boolean splitMergedFiles = true;
 

@@ -133,6 +133,8 @@ public class RawFileChannel extends RawFile {
 		try {
 			fc.transferTo(from, len, f);
 		} catch (Exception e) {
+			System.out.println("Error transfering from " + orig.getPath()
+					+ " to " + p);
 			e.printStackTrace();
 		}
 	}

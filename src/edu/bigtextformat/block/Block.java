@@ -110,9 +110,7 @@ public class Block implements DataType<Block> {
 		ret.putLong(getCheckSum(p)); // 8
 
 		int pad = maxPayloadSize - 4 - 8;
-		if (pad > ret.getWritePos()) {
-			ret.padTo(pad);
-		}
+		ret.padTo(pad);
 		ret.putInt(ret.size() + 4 + 8); // 4 Points to start
 		ret.putLong(BLOCK_MAGIC_END); // 8
 

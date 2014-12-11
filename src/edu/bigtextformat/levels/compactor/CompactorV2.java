@@ -145,7 +145,7 @@ public class CompactorV2 implements Compactor {
 		}
 	}
 
-	public boolean forceCompact() {
+	public boolean isForceCompact() {
 		return forceCompact;
 	}
 

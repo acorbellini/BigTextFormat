@@ -88,12 +88,6 @@ public class Level implements Iterable<LevelFile> {
 				pos = -(pos + 1);
 			files.add(pos, fl);
 
-			// else {
-			// int pos = search(fl.getMinKey(), files, getOpts().format);
-			// if (pos < 0)
-			// pos = -(pos + 1);
-			// files.add(pos, fl);
-			//
 			updateMinAndMax();
 			// }
 			if (level == 0
@@ -355,9 +349,8 @@ public class Level implements Iterable<LevelFile> {
 					// + getOpts().format.print(f.getMaxKey()));
 					// }
 					return found;
-				} else if (!(getOpts().format.compare(levelFile.getMinKey(),
-						max) > 0 || getOpts().format.compare(
-						levelFile.getMaxKey(), min) < 0))
+				} else if (getOpts().format.compare(levelFile.getMinKey(), max) <= 0
+						&& getOpts().format.compare(levelFile.getMaxKey(), min) >= 0)
 					found.add(levelFile);
 			}
 			return found;
@@ -394,8 +387,9 @@ public class Level implements Iterable<LevelFile> {
 						inclFrom, to, inclTo);
 				if (first != null) {
 					if (level == 0) {
-						if (min==null || getOpts().format.compare(min.getKey(),
-								first.getKey()) > 0)
+						if (min == null
+								|| getOpts().format.compare(min.getKey(),
+										first.getKey()) > 0)
 							min = first;
 					} else
 						return first;

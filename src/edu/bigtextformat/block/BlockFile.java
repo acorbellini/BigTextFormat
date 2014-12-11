@@ -20,10 +20,8 @@ import edu.jlime.util.compression.Compressor;
 public class BlockFile implements Closeable, Iterable<Block> {
 	private static final long MAX_CACHE_SIZE = 50;
 	private Cache<BlockID, Block> blocks = CacheBuilder.newBuilder()
-			// .softValues()
-			.maximumSize(MAX_CACHE_SIZE)
-			.expireAfterAccess(1, TimeUnit.SECONDS)
-			.build();
+			.softValues().maximumSize(MAX_CACHE_SIZE)
+			.expireAfterAccess(1, TimeUnit.SECONDS).build();
 
 	// boolean reuseDeleted;
 
@@ -116,7 +114,7 @@ public class BlockFile implements Closeable, Iterable<Block> {
 
 	public static BlockFile open(String path, BlockFileOptions opts)
 			throws Exception {
-		RawFile file = RawFile.getChannelRawFile(path, false, false, false,
+		RawFile file = RawFile.getChannelRawFile(path, false, opts.readOnly, false,
 				false);
 
 		BlockFile ret = new BlockFile(file);
