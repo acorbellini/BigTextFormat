@@ -29,8 +29,8 @@ import edu.bigtextformat.levels.compactor.Compactor;
 import edu.bigtextformat.levels.levelfile.LevelFile;
 import edu.bigtextformat.levels.memtable.Memtable;
 import edu.bigtextformat.levels.memtable.MemtableSegment;
-import edu.bigtextformat.logfile.LogFile;
 import edu.bigtextformat.manifest.Manifest;
+import edu.bigtextformat.util.LogFile;
 import edu.bigtextformat.util.Pair;
 
 public class SortedLevelFile {
@@ -97,17 +97,7 @@ public class SortedLevelFile {
 		return ret;
 	}
 
-	private ExecutorService level0Exec = Executors.newFixedThreadPool(10,
-			new ThreadFactory() {
-				@Override
-				public Thread newThread(Runnable r) {
-					ThreadFactory tf = Executors.defaultThreadFactory();
-					Thread t = tf.newThread(r);
-					t.setName("Level0 Compact Writer for " + cwd.getPath());
-					t.setDaemon(true);
-					return t;
-				}
-			});
+	private ExecutorService level0Exec;
 
 	private volatile List<MemtableSegment> segments = new ArrayList<>();
 
@@ -129,18 +119,6 @@ public class SortedLevelFile {
 
 	private int maxLevel = 0;
 
-	// private Set<LevelFile> checkIntersection(LevelFile levelFile,
-	// List<LevelFile> files, int i) throws Exception {
-	// Set<LevelFile> intersection = new HashSet<LevelFile>();
-	// intersection.add(levelFile);
-	// for (int j = i; j < files.size(); j++) {
-	// LevelFile levelFile2 = files.get(j);
-	// if (levelFile.intersectsWith(levelFile2))
-	// intersection.add(levelFile2);
-	// }
-	// return intersection;
-	// }
-
 	volatile boolean compacting = false;
 
 	private volatile Manifest manifest;
@@ -149,9 +127,10 @@ public class SortedLevelFile {
 
 	AtomicInteger currentWriting = new AtomicInteger(0);
 
-	private SortedLevelFile(File cwd, LevelOptions opt) throws Exception {
+	private SortedLevelFile(final File cwd, LevelOptions opt) throws Exception {
 		this.opts = opt;
 		this.cwd = cwd;
+
 		this.manifest = new Manifest(cwd, this);
 		Collection<LevelFile> levelFiles = manifest.getFiles();
 
@@ -165,13 +144,26 @@ public class SortedLevelFile {
 				e.printStackTrace();
 			}
 		}
-		for (int i = 0; i < 4; i++) {
+
+		level0Exec = Executors.newFixedThreadPool(opts.maxLevel0WriterThreads,
+				new ThreadFactory() {
+					@Override
+					public Thread newThread(Runnable r) {
+						ThreadFactory tf = Executors.defaultThreadFactory();
+						Thread t = tf.newThread(r);
+						t.setName("Level0 Compact Writer for " + cwd.getPath());
+						t.setDaemon(true);
+						return t;
+					}
+				});
+
+		for (int i = 0; i < opts.maxMemtableSegments; i++) {
 			MemtableSegment seg = new MemtableSegment();
 			seg.setCurrent(new Memtable(cwd.getPath(), opts.format));
 			this.segments.add(seg);
 
 		}
-		this.compactor = new Compactor(this, opts.maxCompactorThreads);
+		this.compactor = new Compactor(this);
 		for (LevelFile levelFile : levelFiles) {
 			levelFile.setOpts(opts);
 			addLevel(levelFile);
@@ -260,29 +252,6 @@ public class SortedLevelFile {
 		}
 
 		return false;
-	}
-
-	public void createLevel(LevelFile from, int level) throws Exception {
-		lock.writeLock().lock();
-		try {
-			Integer cont = getLevel(level).getLastLevelIndex();
-			remove(from);
-			from.moveTo(level, cont);
-			addLevel(from);
-		} finally {
-			lock.writeLock().unlock();
-		}
-	}
-
-	public void delete(LevelFile levelFile) throws Exception {
-		lock.writeLock().lock();
-		try {
-			levelFile.delete();
-			remove(levelFile);
-		} finally {
-			lock.writeLock().unlock();
-		}
-
 	}
 
 	public boolean exists(byte[] k) {
@@ -487,9 +456,7 @@ public class SortedLevelFile {
 		Level level0 = getLevel(0);
 		try {
 			writeLevel0Data(table.getData(), level0);
-
 			table.getLog().delete();
-
 		} catch (Exception e1) {
 			e1.printStackTrace();
 		}
@@ -513,8 +480,8 @@ public class SortedLevelFile {
 			if (current.isEmpty())
 				return;
 			seg.setCurrent(new Memtable(cwd.getPath(), opts.format));
-			if (!opts.appendOnlyMode)
-				awaitFutures(seg);
+
+			awaitFutures(seg);
 
 			scheduleMemtable(current, seg);
 

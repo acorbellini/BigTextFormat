@@ -57,35 +57,9 @@ public class CompactorWorker implements Runnable {
 				} else {
 					from.add(first);
 				}
-				// from.add(first);
-				// for (int i = 0; from.size() < file.getOpts().minMergeElements
-				// && i < l.size(); i++) {
-				// from.add(l.get(i));
-				// }
-
-				boolean removed = false;
-				Iterator<LevelFile> it = from.iterator();
-				while (it.hasNext()) {
-					LevelFile levelFile = (LevelFile) it.next();
-					boolean res = levelFile.setMerging(level);
-					if (!res) {
-						it.remove();
-						removed = true;
-					}
-				}
-
-				if (from.isEmpty())
-					if (removed)
-						return true;
-					else
-						return false;
-
 				Level next = file.getLevel(level + 1);
 				LevelMerger.merge(from, l, next, !compactor.isForceCompact(),
 						exec);
-
-				for (LevelFile levelFile : from)
-					levelFile.unSetMerging();
 				return true;
 			}
 			return false;

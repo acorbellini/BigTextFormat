@@ -26,12 +26,15 @@ public class LevelOptions implements DataType<LevelOptions> {
 	public int sizeModifier = 3;
 	public float maxSize = 50 * 1024 * 1024;
 	public int intersectSplit = 10;
+
 	public boolean splitMemtable = true;
 	public boolean splitMergedFiles = true;
 
-	public boolean appendOnlyMode = false;
-
 	public int maxMergeElements = 4;
+	public int maxLevel0WriterThreads = 10;
+	public int maxMemtableSegments = 4;
+	public int maxCompactionWriters = 20;
+	public int compactTrottle = (int) (128 * 1024f / 1000);
 
 	@Override
 	public LevelOptions fromByteArray(byte[] data) throws Exception {
@@ -52,11 +55,6 @@ public class LevelOptions implements DataType<LevelOptions> {
 		byte compType = buff.get();
 		if (compType != -1)
 			this.comp = CompressionType.getByID(compType);
-		return this;
-	}
-
-	public LevelOptions setAppendOnly(boolean append) {
-		this.appendOnlyMode = append;
 		return this;
 	}
 

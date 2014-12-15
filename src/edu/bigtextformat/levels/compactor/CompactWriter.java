@@ -22,21 +22,17 @@ public class CompactWriter {
 
 	private DataBlockWriter current = new DataBlockWriter();
 
-	boolean trottle = false;
-
-	private int rate;
+	private Integer rate = null;
 
 	private ExecutorService exec;
 
 	byte[] minKey;
 
-	private Semaphore sem = new Semaphore(15);
-
 	AtomicInteger cont = new AtomicInteger();
 
-	public CompactWriter(Level to, ExecutorService execShared2) {
+	public CompactWriter(Level to, ExecutorService exec) {
 		this.level = to;
-		this.exec = execShared2;
+		this.exec = exec;
 	}
 
 	public void add(byte[] k, byte[] v) throws Exception {
@@ -88,12 +84,16 @@ public class CompactWriter {
 	private void flushDBS() throws InterruptedException {
 		if (dbs.isEmpty())
 			return;
+
 		final List<DataBlock> currentList = dbs;
+
 		dbs = new ArrayList<DataBlock>();
 		currSize = 0;
-		sem.acquire();
-
-		cont.incrementAndGet();
+		synchronized (cont) {
+			while (cont.get() >= level.getOpts().maxWriterThreads)
+				cont.wait();
+			cont.incrementAndGet();
+		}
 
 		exec.execute(new Runnable() {
 			@Override
@@ -115,7 +115,7 @@ public class CompactWriter {
 						DataBlock dataBlock = (DataBlock) it.next();
 						try {
 							curr.put(dataBlock);
-							if (trottle) {
+							if (rate != null) {
 								size += dataBlock.size();
 								long diff = (System.currentTimeMillis() - time);
 								if (size / ((float) diff) > rate) { // 10MB per
@@ -149,7 +149,6 @@ public class CompactWriter {
 						e.printStackTrace();
 					}
 				} finally {
-					sem.release();
 					synchronized (cont) {
 						cont.decrementAndGet();
 						cont.notify();
@@ -171,7 +170,6 @@ public class CompactWriter {
 	}
 
 	public void setTrottle(int rate) {
-		this.trottle = true;
 		this.rate = rate;
 	}
 }

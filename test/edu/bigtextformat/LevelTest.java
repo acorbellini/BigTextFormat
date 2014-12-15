@@ -25,6 +25,7 @@ public class LevelTest {
 		if (!f.isDirectory() && !f.delete())
 			throw new FileNotFoundException("Failed to delete file: " + f);
 	}
+
 	public static void main(String[] args) throws Exception {
 		String PATH = args[0];
 		Integer SIZE = Integer.valueOf(args[1]);
@@ -106,7 +107,7 @@ public class LevelTest {
 			file.close();
 
 			System.out.println("Reopening...");
-			file = SortedLevelFile.open(PATH, opts.setAppendOnly(false));
+			file = SortedLevelFile.open(PATH, opts);
 			// file.compact();
 		}
 		System.out.println("Querying...");

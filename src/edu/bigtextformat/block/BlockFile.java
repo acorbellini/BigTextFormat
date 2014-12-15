@@ -20,8 +20,8 @@ import edu.jlime.util.compression.Compressor;
 public class BlockFile implements Closeable, Iterable<Block> {
 	public static BlockFile create(String path, BlockFileOptions opts)
 			throws Exception {
-		RawFile file = RawFile.getChannelRawFile(path, opts.trunc,
-				opts.readOnly, opts.appendOnly, opts.sync);
+		RawFile file = new RawFile(path, opts.trunc, opts.readOnly,
+				opts.appendOnly, opts.sync);
 		BlockFile ret = new BlockFile(file);
 		ret.minSize = opts.minSize;
 		ret.currentPos = file.length();
@@ -50,10 +50,10 @@ public class BlockFile implements Closeable, Iterable<Block> {
 
 		return ret;
 	}
+
 	public static BlockFile open(String path, BlockFileOptions opts)
 			throws Exception {
-		RawFile file = RawFile.getChannelRawFile(path, false, opts.readOnly,
-				false, false);
+		RawFile file = new RawFile(path, false, opts.readOnly, false, false);
 
 		BlockFile ret = new BlockFile(file);
 

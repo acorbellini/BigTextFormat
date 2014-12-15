@@ -27,21 +27,11 @@ public class Compactor {
 			.newSetFromMap(new ConcurrentHashMap<Integer, Boolean>());
 
 	private volatile boolean started = false;
-	private ExecutorService execWriter = Executors.newFixedThreadPool(10,
-			new ThreadFactory() {
-				@Override
-				public Thread newThread(Runnable r) {
-					ThreadFactory tf = Executors.defaultThreadFactory();
-					Thread t = tf.newThread(r);
-					t.setName("Compact Writer for " + file);
-					t.setDaemon(true);
-					return t;
-				}
-			});;
+	private ExecutorService execWriter;
 
-	public Compactor(final SortedLevelFile file, int n) {
+	public Compactor(final SortedLevelFile file) {
 		this.file = file;
-		exec = Executors.newFixedThreadPool(n, new ThreadFactory() {
+		exec = Executors.newFixedThreadPool(file.getOpts().maxCompactorThreads, new ThreadFactory() {
 
 			@Override
 			public Thread newThread(Runnable r) {
@@ -50,6 +40,19 @@ public class Compactor {
 				return t;
 			}
 		});
+
+		execWriter = Executors.newFixedThreadPool(
+				file.getOpts().maxCompactionWriters, new ThreadFactory() {
+					@Override
+					public Thread newThread(Runnable r) {
+						ThreadFactory tf = Executors.defaultThreadFactory();
+						Thread t = tf.newThread(r);
+						t.setName("Compact Writer for " + file);
+						t.setDaemon(true);
+						return t;
+					}
+				});
+		;
 	}
 
 	private synchronized void changeStateTo(int newState) {

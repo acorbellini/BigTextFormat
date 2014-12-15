@@ -4,7 +4,6 @@ import edu.bigtextformat.data.BlockData;
 import edu.jlime.util.ByteBuffer;
 
 public class Record implements BlockData {
-
 	private RecordFormat format;
 	private Object[] data;
 

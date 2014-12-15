@@ -52,6 +52,17 @@ public class LevelMerger {
 
 	public static void merge(Set<LevelFile> list, final Level current,
 			Level to, boolean trottle, ExecutorService exec) throws Exception {
+		Iterator<LevelFile> listIt = list.iterator();
+		while (listIt.hasNext()) {
+			LevelFile levelFile = (LevelFile) listIt.next();
+			boolean res = levelFile.setMerging(current.level());
+			if (!res)
+				listIt.remove();
+		}
+
+		if (list.isEmpty())
+			return;
+
 		BlockFormat format = current.getOpts().format;
 		Set<LevelFile> intersect = new HashSet<>();
 		for (LevelFile from : list) {
@@ -72,7 +83,7 @@ public class LevelMerger {
 		}
 		CompactWriter writer = new CompactWriter(to, exec);
 		if (trottle)
-			((CompactWriter) writer).setTrottle(RATE);
+			((CompactWriter) writer).setTrottle(current.getOpts().compactTrottle);
 
 		ArrayList<LevelFile> intersectSorted = new ArrayList<>(intersect);
 
@@ -154,12 +165,12 @@ public class LevelMerger {
 
 		writer.persist();
 
-		for (LevelFile levelFile : intersectSorted) {
+		for (LevelFile levelFile : intersectSorted)
 			to.delete(levelFile);
-		}
-		for (LevelFile from : list) {
+
+		for (LevelFile from : list)
 			current.delete(from);
-		}
+
 	}
 
 	public static void shrink(Level level, Set<LevelFile> level0Merge,
@@ -215,8 +226,4 @@ public class LevelMerger {
 
 		});
 	}
-
-	private static final int RATE = (int) ((512 * 1024) / 1000); // 1MB
-																	// per
-																	// sec
 }

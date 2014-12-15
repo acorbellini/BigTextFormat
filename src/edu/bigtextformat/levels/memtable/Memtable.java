@@ -9,7 +9,7 @@ import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import edu.bigtextformat.block.BlockFormat;
-import edu.bigtextformat.logfile.LogFile;
+import edu.bigtextformat.util.LogFile;
 import edu.bigtextformat.util.Pair;
 
 public class Memtable {
