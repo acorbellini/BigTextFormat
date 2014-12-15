@@ -9,7 +9,6 @@ import java.util.Timer;
 import java.util.TimerTask;
 import java.util.UUID;
 import java.util.concurrent.Callable;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -44,9 +43,10 @@ public class LevelFile {
 
 	private static final long TIME_TO_CLOSE = 5000;
 
-	private static Cache<DataBlockID, DataBlock> cache = CacheBuilder
-			.newBuilder().concurrencyLevel(10).maximumSize(MAX_CACHE_SIZE)
-			.softValues().build();
+	private static Cache<DataBlockID, DataBlock> defaultCache = CacheBuilder
+			.newBuilder().maximumSize(MAX_CACHE_SIZE).weakValues().build();
+
+	private Cache<DataBlockID, DataBlock> cache = defaultCache;
 
 	private volatile LevelFileStatus state = LevelFileStatus.PERSISTED;
 
@@ -57,7 +57,8 @@ public class LevelFile {
 	private volatile Index index;
 
 	private int cont;
-	private int level;
+
+	private volatile int level;
 
 	private String dir;
 	private String path;
@@ -89,6 +90,10 @@ public class LevelFile {
 		this.maxKey = maxKey;
 		this.rl = closeLock.readLock();
 		this.wl = closeLock.writeLock();
+	}
+
+	public void setCache(Cache<DataBlockID, DataBlock> cache) {
+		this.cache = cache;
 	}
 
 	public String getName() {

@@ -2,7 +2,6 @@ package edu.bigtextformat.levels;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.CopyOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -12,16 +11,20 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 
 import edu.bigtextformat.block.Block;
 import edu.bigtextformat.block.BlockFile;
 import edu.bigtextformat.block.BlockFileOptions;
+import edu.bigtextformat.levels.levelfile.DataBlockID;
 import edu.bigtextformat.levels.levelfile.LevelFile;
 import edu.jlime.util.ByteBuffer;
 import edu.jlime.util.DataTypeUtils;
@@ -44,8 +47,10 @@ public class Manifest {
 
 	private File fDir;
 	private int mode = -1;
+	private SortedLevelFile sorted;
 
-	public Manifest(File fDir) throws Exception {
+	public Manifest(File fDir, SortedLevelFile sll) throws Exception {
+		this.sorted = sll;
 		this.path = fDir.getPath() + "/MANIFEST.log";
 		this.fDir = fDir;
 		try {
@@ -102,22 +107,18 @@ public class Manifest {
 			// levelFileName))) {
 			if (inDir.contains(levelFileName)) {
 				if (!files.containsKey(levelFileName)) {
-					files.put(
-							levelFileName,
-							LevelFile.open(level, cont, fDir.getPath() + "/"
-									+ levelFileName, minKey, maxKey));
+					LevelFile open = LevelFile.open(level, cont, fDir.getPath()
+							+ "/" + levelFileName, minKey, maxKey);
+
+					open.setCache(sorted.getCache());
+
+					files.put(levelFileName, open);
 					inFile.add(levelFileName);
 				} else {
 					// System.out.println("Was already there.");
 				}
 
 			}
-		}
-
-		Map<String, LevelFile> checkOtherFiles = checkOtherFiles(files);
-		if (!checkOtherFiles.isEmpty()) {
-			files.putAll(checkOtherFiles);
-			compact(files);
 		}
 
 		appendMode();
@@ -136,7 +137,15 @@ public class Manifest {
 
 	private Map<String, LevelFile> checkOtherFiles(
 			final HashMap<String, LevelFile> files) {
-		ExecutorService exec = Executors.newFixedThreadPool(100);
+		ExecutorService exec = Executors.newFixedThreadPool(20,  new ThreadFactory() {
+
+			@Override
+			public Thread newThread(Runnable r) {
+				Thread t = Executors.defaultThreadFactory().newThread(r);
+				t.setName("Manifest missing file checker for " + fDir);
+				return t;
+			}
+		} );
 		final Map<String, LevelFile> ret = new ConcurrentHashMap<>();
 		for (final File currentFile : fDir.listFiles()) {
 			exec.execute(new Runnable() {
@@ -153,6 +162,9 @@ public class Manifest {
 						try {
 							LevelFile open = LevelFile.open(level, cont,
 									fDir.getPath() + "/" + name, null, null);
+
+							open.setCache(sorted.getCache());
+
 							open.getMinKey();
 							open.getMaxKey();
 							ret.put(currentFile.getName(), open);
@@ -174,7 +186,7 @@ public class Manifest {
 		return ret;
 	}
 
-	private synchronized void compact(HashMap<String, LevelFile> files)
+	public synchronized void compact(HashMap<String, LevelFile> files)
 			throws Exception, IOException {
 
 		String newPath = fDir.getPath() + "/MANIFEST.log.new";
@@ -258,8 +270,16 @@ public class Manifest {
 		log.close();
 	}
 
-	public void compact() throws IOException, Exception {
-		compact(readFiles());
+	public Collection<LevelFile> getFiles() throws IOException, Exception {
+		HashMap<String, LevelFile> files = readFiles();
+
+		Map<String, LevelFile> checkOtherFiles = checkOtherFiles(files);
+		if (!checkOtherFiles.isEmpty()) {
+			files.putAll(checkOtherFiles);
+			compact(files);
+		}
+
+		return files.values();
 	}
 
 }

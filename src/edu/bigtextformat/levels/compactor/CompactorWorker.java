@@ -3,6 +3,7 @@ package edu.bigtextformat.levels.compactor;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
 
 import edu.bigtextformat.levels.Level;
 import edu.bigtextformat.levels.SortedLevelFile;
@@ -13,12 +14,16 @@ public class CompactorWorker implements Runnable {
 	private SortedLevelFile file;
 	private int level;
 	private CompactorV2 compactor;
+	ExecutorService exec;
+
+	Set<LevelFile> from = new HashSet<>();
 
 	public CompactorWorker(CompactorV2 compactor, SortedLevelFile file,
-			int level) {
+			int level, ExecutorService exec) {
 		this.file = file;
 		this.level = level;
 		this.compactor = compactor;
+		this.exec = exec;
 	}
 
 	@Override
@@ -44,17 +49,15 @@ public class CompactorWorker implements Runnable {
 				// LevelFile from = LevelMerger.shrinkLevel0(l);
 				// System.out.println(file.print());
 				LevelFile first = l.getRandom();
-				Set<LevelFile> from = null;
+
 				if (level == 0) {
-					if (compactor.isForceCompact())
-						from = l.intersect(first.getMinKey(), first.getMaxKey());
-					else
-						from = l.intersect(first.getMinKey(),
-								first.getMaxKey(),
-								file.getOpts().maxLevel0Files);
+					// if (compactor.isForceCompact())
+					// from = l.intersect(first.getMinKey(), first.getMaxKey());
+					// else
+					from.addAll(l.intersect(first.getMinKey(),
+							first.getMaxKey(), file.getOpts().maxMergeElements));
 
 				} else {
-					from = new HashSet<>();
 					from.add(first);
 				}
 				// from.add(first);
@@ -81,7 +84,8 @@ public class CompactorWorker implements Runnable {
 						return false;
 
 				Level next = file.getLevel(level + 1);
-				LevelMerger.merge(from, l, next, !compactor.isForceCompact());
+				LevelMerger.merge(from, l, next, !compactor.isForceCompact(),
+						exec);
 
 				for (LevelFile levelFile : from)
 					levelFile.unSetMerging();
@@ -90,6 +94,8 @@ public class CompactorWorker implements Runnable {
 			return false;
 		} catch (Exception e) {
 			throw e;
+		} finally {
+			from.clear();
 		}
 	}
 

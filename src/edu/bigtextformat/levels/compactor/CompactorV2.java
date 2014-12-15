@@ -27,6 +27,17 @@ public class CompactorV2 implements Compactor {
 			.newSetFromMap(new ConcurrentHashMap<Integer, Boolean>());
 
 	private volatile boolean started = false;
+	private ExecutorService execWriter = Executors.newFixedThreadPool(10,
+			new ThreadFactory() {
+				@Override
+				public Thread newThread(Runnable r) {
+					ThreadFactory tf = Executors.defaultThreadFactory();
+					Thread t = tf.newThread(r);
+					t.setName("Compact Writer for " + file);
+					t.setDaemon(true);
+					return t;
+				}
+			});;
 
 	public CompactorV2(final SortedLevelFile file, int n) {
 		this.file = file;
@@ -63,7 +74,12 @@ public class CompactorV2 implements Compactor {
 		} catch (InterruptedException e) {
 			e.printStackTrace();
 		}
-
+		execWriter.shutdown();
+		try {
+			execWriter.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS);
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
 		// changeStateTo(STOPPING);
 		// while (!checkState(STOPPED))
 		// try {
@@ -97,7 +113,7 @@ public class CompactorV2 implements Compactor {
 			else
 				running.add(level);
 		}
-		exec.execute(new CompactorWorker(this, file, level));
+		exec.execute(new CompactorWorker(this, file, level, execWriter));
 
 	}
 
@@ -124,7 +140,7 @@ public class CompactorV2 implements Compactor {
 	@Override
 	public synchronized void forcecompact() {
 		forceCompact = true;
-		waitEmptyRunList();		
+		waitEmptyRunList();
 		int currLevels = file.getMaxLevel();
 		for (int i = 0; i <= currLevels; i++) {
 			compact(i);

@@ -2,7 +2,7 @@ package edu.bigtextformat.levels.levelfile;
 
 import java.util.UUID;
 
-class DataBlockID {
+public class DataBlockID {
 	UUID fileID;
 	long pos;
 

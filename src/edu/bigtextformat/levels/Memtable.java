@@ -47,18 +47,20 @@ public class Memtable {
 		log.appendMode();
 	}
 
-	public synchronized void put(byte[] k, byte[] val) throws Exception {
-		if (log == null)
-			initLog();
+	public void put(byte[] k, byte[] val) throws Exception {
+
 		Operation e = new Operation(Operations.PUT, k, val);
 		// table.add(e);
 		byte[] opAsBytes = e.toByteArray();
 
-		estimatedSize += opAsBytes.length + 30; // estimated ovhead
+		synchronized (this) {
+			estimatedSize += opAsBytes.length + 30; // estimated ovhead
+			if (log == null)
+				initLog();
+			log.append(opAsBytes);
 
-		log.append(opAsBytes);
-
-		data.put(k, val);
+			data.put(k, val);
+		}
 
 		// if (data.size() % FLUSH_MAP_SIZE == 0) {
 		// log.flush();

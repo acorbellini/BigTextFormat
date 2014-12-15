@@ -7,6 +7,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
 
 import edu.bigtextformat.block.BlockFormat;
 import edu.bigtextformat.levels.DataBlock;
@@ -21,12 +22,12 @@ import edu.bigtextformat.levels.levelfile.LevelFileWriter;
 
 public class LevelMerger {
 
-	private static final int RATE = (int) ((2.5f * 1024 * 1024) / 1000); // 1MB
-																			// per
-																			// sec
+	private static final int RATE = (int) ((512 * 1024) / 1000); // 1MB
+																	// per
+																	// sec
 
-	public static void shrink(Level level, Set<LevelFile> level0Merge)
-			throws Exception {
+	public static void shrink(Level level, Set<LevelFile> level0Merge,
+			ExecutorService execCR) throws Exception {
 		List<PairReader> readers = new ArrayList<>();
 		for (LevelFile levelFile : level0Merge) {
 			try {
@@ -41,7 +42,7 @@ public class LevelMerger {
 		try {
 			DataBlockWriter db = new DataBlockWriter();
 			// LevelFileWriter writer = temp.getWriter();
-			CompactWriterV3 writer = new CompactWriterV3(level);
+			CompactWriterV3 writer = new CompactWriterV3(level, execCR);
 			// writer.setTrottle(RATE);
 			PairReader min = getNext(readers, level.getOpts().format, null);
 			while (min != null && min.getKey() != null) {
@@ -71,7 +72,7 @@ public class LevelMerger {
 	}
 
 	public static void merge(Set<LevelFile> list, final Level current,
-			Level to, boolean trottle) throws Exception {
+			Level to, boolean trottle, ExecutorService exec) throws Exception {
 		// long init = System.currentTimeMillis();
 		BlockFormat format = current.getOpts().format;
 
@@ -87,7 +88,6 @@ public class LevelMerger {
 		}
 
 		// if (intersect.size() > 12)
-		// System.out.println("Warning, intersecting " + intersect.size());
 
 		// int levelFileToMerge = 0;
 		// while (intersect.size() < Math.max(to.getOpts().minMergeElements,
@@ -116,9 +116,13 @@ public class LevelMerger {
 			return;
 		}
 
+		// System.out.println("Merging INTERSECTION: " + intersect.size()
+		// + " LIST ELEMENTS: " + list.size() + " elements.");
+
 		Writer writer = null;
 		if (current.getOpts().splitMergedFiles) {
-			writer = new CompactWriterV3(to);
+//			writer = new CompactWriterV2(to);
+			writer = new CompactWriterV3(to, exec);
 			if (trottle)
 				((CompactWriterV3) writer).setTrottle(RATE);
 		} else {
@@ -306,7 +310,9 @@ public class LevelMerger {
 	public static PairReader getNext(List<PairReader> readers,
 			BlockFormat format, byte[] before) {
 		PairReader min = null;
-		for (PairReader pairReader : readers) {
+		Iterator<PairReader> it = readers.iterator();
+		while (it.hasNext()) {
+			PairReader pairReader = (PairReader) it.next();
 			while (pairReader.hasNext()
 					&& (before != null && format.compare(before,
 							pairReader.getKey()) >= 0))
@@ -324,7 +330,8 @@ public class LevelMerger {
 					else if (compare > 0)
 						min = pairReader;
 				}
-			}
+			} else
+				it.remove();
 		}
 
 		return min;

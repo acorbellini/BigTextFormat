@@ -5,13 +5,14 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.Comparator;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -21,22 +22,82 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
+
 import edu.bigtextformat.block.BlockFormat;
 import edu.bigtextformat.levels.compactor.CompactWriterV3;
 import edu.bigtextformat.levels.compactor.Compactor;
 import edu.bigtextformat.levels.compactor.CompactorV2;
 import edu.bigtextformat.levels.compactor.LevelMerger;
 import edu.bigtextformat.levels.compactor.Writer;
+import edu.bigtextformat.levels.levelfile.DataBlockID;
 import edu.bigtextformat.levels.levelfile.LevelFile;
-import gnu.trove.set.hash.TIntHashSet;
 
 public class SortedLevelFile {
+	private static final long MAX_CACHE_SIZE = 10000;
 
-	ExecutorService exec = Executors.newFixedThreadPool(10);
+	private Cache<DataBlockID, DataBlock> cache = CacheBuilder.newBuilder()
+			.maximumSize(MAX_CACHE_SIZE).expireAfterAccess(5, TimeUnit.SECONDS)
+			.softValues().build();
 
-	List<Future<Void>> fut = new ArrayList<Future<Void>>();
+	// private ExecutorService exec = Executors.newFixedThreadPool(4,
+	// new ThreadFactory() {
+	// @Override
+	// public Thread newThread(Runnable r) {
+	// ThreadFactory tf = Executors.defaultThreadFactory();
+	// Thread t = tf.newThread(r);
+	// t.setName("Memtable Writer");
+	// t.setDaemon(true);
+	// return t;
+	// }
+	// });
 
-	private volatile Memtable memTable;
+	private ExecutorService level0Exec = Executors.newFixedThreadPool(10,
+			new ThreadFactory() {
+				@Override
+				public Thread newThread(Runnable r) {
+					ThreadFactory tf = Executors.defaultThreadFactory();
+					Thread t = tf.newThread(r);
+					t.setName("Level0 Compact Writer for " + cwd.getPath());
+					t.setDaemon(true);
+					return t;
+				}
+			});
+
+	private volatile List<MemtableSegment> segments = new ArrayList<>();
+
+	private static class MemtableSegment {
+		volatile Memtable current;
+		List<Future<Void>> fut = new ArrayList<Future<Void>>();
+		private ExecutorService exec = Executors.newFixedThreadPool(2,
+				new ThreadFactory() {
+					@Override
+					public Thread newThread(Runnable r) {
+						ThreadFactory tf = Executors.defaultThreadFactory();
+						Thread t = tf.newThread(r);
+						t.setName("Segment Writer");
+						t.setDaemon(true);
+						return t;
+					}
+				});
+
+		public void setCurrent(Memtable current) {
+			this.current = current;
+		}
+
+		public Memtable getCurrent() {
+			return current;
+		}
+
+		public List<Future<Void>> getFut() {
+			return fut;
+		}
+
+		public ExecutorService getExec() {
+			return exec;
+		}
+	}
 
 	ReadWriteLock lock = new ReentrantReadWriteLock();
 
@@ -50,8 +111,6 @@ public class SortedLevelFile {
 
 	volatile boolean closed;
 
-	private LogFileWriter writer;
-
 	private Compactor compactor;
 
 	private int maxLevel = 0;
@@ -63,8 +122,8 @@ public class SortedLevelFile {
 	private SortedLevelFile(File cwd, LevelOptions opt) throws Exception {
 		this.opts = opt;
 		this.cwd = cwd;
-		this.manifest = new Manifest(cwd);
-		Collection<LevelFile> levelFiles = manifest.readFiles().values();
+		this.manifest = new Manifest(cwd, this);
+		Collection<LevelFile> levelFiles = manifest.getFiles();
 
 		if (opts == null) {
 			if (levelFiles.isEmpty())
@@ -76,8 +135,12 @@ public class SortedLevelFile {
 				e.printStackTrace();
 			}
 		}
-		this.memTable = new Memtable(cwd.getPath(), opts.format);
-		this.writer = new LogFileWriter(this);
+		for (int i = 0; i < 4; i++) {
+			MemtableSegment seg = new MemtableSegment();
+			seg.setCurrent(new Memtable(cwd.getPath(), opts.format));
+			this.segments.add(seg);
+
+		}
 		this.compactor = new CompactorV2(this, opts.maxCompactorThreads);
 		for (LevelFile levelFile : levelFiles) {
 			levelFile.setOpts(opts);
@@ -86,7 +149,32 @@ public class SortedLevelFile {
 	}
 
 	private void recovery() throws Exception {
-		ExecutorService execRec = Executors.newFixedThreadPool(20);
+		ExecutorService execRec = Executors.newFixedThreadPool(4,
+				new ThreadFactory() {
+
+					@Override
+					public Thread newThread(Runnable r) {
+						ThreadFactory tf = Executors.defaultThreadFactory();
+						Thread t = tf.newThread(r);
+						t.setName("Recovery Thread for " + cwd.getPath());
+						t.setDaemon(true);
+						return t;
+					}
+				});
+
+		final ExecutorService execCR = Executors.newFixedThreadPool(4,
+				new ThreadFactory() {
+
+					@Override
+					public Thread newThread(Runnable r) {
+						ThreadFactory tf = Executors.defaultThreadFactory();
+						Thread t = tf.newThread(r);
+						t.setName("Recovery Writer for " + cwd.getPath());
+						t.setDaemon(true);
+						return t;
+					}
+				});
+
 		List<Future<Void>> futures = new ArrayList<Future<Void>>();
 
 		List<LevelFile> current = new ArrayList<LevelFile>();
@@ -130,7 +218,8 @@ public class SortedLevelFile {
 													+ intersection.size()
 													+ " files. ");
 									try {
-										LevelMerger.shrink(to, intersection);
+										LevelMerger.shrink(to, intersection,
+												execCR);
 									} catch (Exception e) {
 										e.printStackTrace();
 									}
@@ -145,6 +234,7 @@ public class SortedLevelFile {
 				future.get();
 			}
 		}
+		execCR.shutdown();
 		execRec.shutdown();
 	}
 
@@ -199,24 +289,12 @@ public class SortedLevelFile {
 
 	}
 
-	private ExecutorService level0Exec = Executors.newFixedThreadPool(5,
-			new ThreadFactory() {
-				@Override
-				public Thread newThread(Runnable r) {
-					ThreadFactory tf = Executors.defaultThreadFactory();
-					Thread t = tf.newThread(r);
-					t.setName("Compact Writer Thread");
-					t.setDaemon(true);
-					return t;
-				}
-			});
-
 	private void writeLevel0Data(TreeMap<byte[], byte[]> data, Level level0)
 			throws Exception {
 		Writer writer = null;
 		if (opts.splitMemtable) {
 			writer = new CompactWriterV3(level0, level0Exec);
-			// ((CompactWriterV3) writer).setTrottle(128 * 1024 / 1000);
+			// ((CompactWriterV3) writer).setTrottle(512 * 1024 / 1000);
 		} else
 			writer = new SingleFileWriter(level0);
 
@@ -302,44 +380,58 @@ public class SortedLevelFile {
 		return opts;
 	}
 
+	AtomicInteger cont = new AtomicInteger(0);
+
 	public void put(byte[] k, byte[] val) throws Exception {
 		if (closed)
 			throw new Exception("File closed");
-		synchronized (this) {
-			if (memTable.logSize() >= opts.memTableSize)
-				writeMemtable(false);
-			memTable.put(k, val);
+
+		int index = (int) (cont.getAndIncrement() % segments.size());
+		MemtableSegment seg = segments.get(index);
+		synchronized (seg) {
+			if (seg.getCurrent().logSize() >= opts.memTableSize)
+				writeMemtable(false, seg);
+			seg.getCurrent().put(k, val);
 		}
 	}
 
-	private synchronized void writeMemtable(boolean flush) throws Exception {
-		if (memTable.isEmpty())
-			return;
+	private void writeMemtable(boolean flush, MemtableSegment seg)
+			throws Exception {
+		synchronized (seg) {
+			final Memtable current = seg.getCurrent();
+			if (current.isEmpty())
+				return;
+			seg.setCurrent(new Memtable(cwd.getPath(), opts.format));
+			if (!opts.appendOnlyMode)
+				awaitFutures(seg);
 
-		final Memtable current = memTable;
+			scheduleMemtable(current, seg);
 
-		memTable = new Memtable(cwd.getPath(), opts.format);
-
-		if (!opts.appendOnlyMode)
-			for (Future<Void> future : fut) {
-				future.get();
+			if (flush) {
+				awaitFutures(seg);
 			}
-		scheduleMemtable(current);
-
-		if (flush)
-			for (Future<Void> future : fut) {
-				future.get();
-			}
+		}
 
 	}
 
-	private void scheduleMemtable(final Memtable current) {
-		fut.add(exec.submit(new Callable<Void>() {
+	private void awaitFutures(MemtableSegment seg) throws InterruptedException,
+			ExecutionException {
+		Iterator<Future<Void>> it = seg.getFut().iterator();
+		while (it.hasNext()) {
+			Future<java.lang.Void> future = (Future<java.lang.Void>) it.next();
+			future.get();
+			it.remove();
+		}
+	}
+
+	private void scheduleMemtable(final Memtable current, MemtableSegment seg) {
+		seg.getFut().add(seg.getExec().submit(new Callable<Void>() {
 			@Override
 			public Void call() {
 				try {
 					current.closeLog();
 					writeLevel0(current, false);
+
 				} catch (IOException e) {
 					// TODO Auto-generated catch block
 					e.printStackTrace();
@@ -351,6 +443,7 @@ public class SortedLevelFile {
 
 			}
 		}));
+
 	}
 
 	public boolean exists(byte[] k) {
@@ -390,8 +483,13 @@ public class SortedLevelFile {
 
 			// if (!opts.appendOnlyMode)
 			for (File path : memtables) {
-				Memtable mem = Memtable.fromFile(path, opts.format);
-				ret.scheduleMemtable(mem);
+				try {
+					Memtable mem = Memtable.fromFile(path, opts.format);
+					ret.scheduleMemtable(mem, ret.segments.get(0));
+				} catch (Exception e) {
+					path.delete();
+					System.out.println(e.getMessage());
+				}
 			}
 			// ret.flushWriting();
 		}
@@ -399,7 +497,6 @@ public class SortedLevelFile {
 	}
 
 	private void start() {
-		writer.start();
 		compactor.start();
 	}
 
@@ -412,15 +509,19 @@ public class SortedLevelFile {
 	}
 
 	public synchronized void close() throws Exception {
-		exec.shutdown();
-		exec.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS);
+		for (MemtableSegment memtableSegment : segments) {
+			memtableSegment.getExec().shutdown();
+			memtableSegment.getExec().awaitTermination(Long.MAX_VALUE,
+					TimeUnit.DAYS);
+		}
 
 		closed = true;
 
-		writer.waitFinished();
 		compactor.waitFinished();
 
-		writeMemtable(true);
+		for (MemtableSegment memtableSegment : segments) {
+			writeMemtable(true, memtableSegment);
+		}
 
 		Level level0 = getLevel(0);
 		if (level0 != null)
@@ -539,7 +640,9 @@ public class SortedLevelFile {
 			this.compacting = true;
 			// System.out.println("Writing memtable");
 
-			writeMemtable(true);
+			for (MemtableSegment memtableSegment : segments) {
+				writeMemtable(true, memtableSegment);
+			}
 
 			// flushWriting();
 			//
@@ -554,7 +657,7 @@ public class SortedLevelFile {
 
 			this.compacting = false;
 
-			manifest.compact();
+			manifest.compact(levels.getMap());
 		}
 	}
 
@@ -566,7 +669,7 @@ public class SortedLevelFile {
 
 	public boolean contains(byte[] k) throws Exception {
 		synchronized (this) {
-			if (memTable.contains(k))
+			if (segments.contains(k))
 				return true;
 		}
 
@@ -646,9 +749,17 @@ public class SortedLevelFile {
 	public Pair<byte[], byte[]> getFirstInIntersection(byte[] from,
 			boolean inclFrom, byte[] to, boolean inclTo) throws Exception {
 		Pair<byte[], byte[]> min = null;
-		synchronized (this) {
-			min = memTable.getFirstIntersect(from, inclFrom, to, inclTo,
-					opts.format);
+
+		for (MemtableSegment memtableSegment : segments) {
+			synchronized (memtableSegment) {
+				Pair<byte[], byte[]> inMemtable = memtableSegment.getCurrent()
+						.getFirstIntersect(from, inclFrom, to, inclTo,
+								opts.format);
+				if (inMemtable != null
+						&& (min == null || opts.format.compare(min.getKey(),
+								inMemtable.getKey()) > 0))
+					min = inMemtable;
+			}
 		}
 		// synchronized (writing) {
 		// for (LogFile dataBlock : writing) {
@@ -687,10 +798,12 @@ public class SortedLevelFile {
 
 	public byte[] get(byte[] k) {
 		byte[] ret = null;
-		synchronized (this) {
-			ret = memTable.get(k);
-			if (ret != null)
-				return ret;
+		for (MemtableSegment memtableSegment : segments) {
+			synchronized (memtableSegment) {
+				byte[] inMemtable = memtableSegment.getCurrent().get(k);
+				if (inMemtable != null)
+					return inMemtable;
+			}
 		}
 		synchronized (writing) {
 			// for (LogFile dataBlock : writing) {
@@ -717,5 +830,9 @@ public class SortedLevelFile {
 	public void putIfNotExist(byte[] k, byte[] v) throws Exception {
 		if (!contains(k))
 			put(k, v);
+	}
+
+	public Cache<DataBlockID, DataBlock> getCache() {
+		return cache;
 	}
 }

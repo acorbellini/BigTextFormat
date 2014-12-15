@@ -1,12 +1,11 @@
 package edu.bigtextformat.levels.compactor;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import edu.bigtextformat.levels.DataBlock;
 import edu.bigtextformat.levels.DataBlockWriter;
@@ -15,30 +14,42 @@ import edu.bigtextformat.levels.levelfile.LevelFile;
 
 public class CompactWriterV3 implements Writer {
 	// private static final int RATE = 2 * 1024 * 1024 / 1000;
+	// private static ExecutorService execShared =
+	// Executors.newFixedThreadPool(16,
+	// new ThreadFactory() {
+	// @Override
+	// public Thread newThread(Runnable r) {
+	// ThreadFactory tf = Executors.defaultThreadFactory();
+	// Thread t = tf.newThread(r);
+	// t.setName("Shared Compact Writer");
+	// t.setDaemon(true);
+	// return t;
+	// }
+	// });
+
 	private Level level;
+
 	List<DataBlock> dbs = new ArrayList<>();
-	List<Future<Void>> futures = new ArrayList<>();
+
 	int currSize = 0;
+
 	private DataBlockWriter current = new DataBlockWriter();
-	private static ExecutorService execShared = Executors.newFixedThreadPool(4,
-			new ThreadFactory() {
-				@Override
-				public Thread newThread(Runnable r) {
-					ThreadFactory tf = Executors.defaultThreadFactory();
-					Thread t = tf.newThread(r);
-					t.setName("Compact Writer Thread");
-					t.setDaemon(true);
-					return t;
-				}
-			});
+
 	boolean trottle = false;
+
 	private int rate;
+
 	private ExecutorService exec;
+
 	byte[] minKey;
 
-	public CompactWriterV3(Level to) {
-		this(to, execShared);
-	}
+	private Semaphore sem = new Semaphore(15);
+
+	AtomicInteger cont = new AtomicInteger();
+
+	// public CompactWriterV3(Level to) {
+	// this(to, execShared);
+	// }
 
 	public CompactWriterV3(Level to, ExecutorService execShared2) {
 		this.level = to;
@@ -69,11 +80,11 @@ public class CompactWriterV3 implements Writer {
 		currSize += dataBlock.size();
 
 		byte[] maxKey = dataBlock.lastKey();
-
-		float min = Math.min(level.getOpts().maxSize,
-				((level.level() / (float) level.getOpts().sizeModifier) + 1)
-						* level.getOpts().baseSize);
-		if (currSize > min
+		//
+		// float min = Math.min(level.getOpts().maxSize,
+		// ((level.level() / (float) level.getOpts().sizeModifier) + 1)
+		// * level.getOpts().baseSize);
+		if (currSize > level.getOpts().baseSize
 				|| (level.level() > 0 && minKey != null && level.getFile()
 						.getLevel(level.level() + 1)
 						.intersectSize(minKey, maxKey) >= level.getOpts().intersectSplit)) {
@@ -81,63 +92,79 @@ public class CompactWriterV3 implements Writer {
 		}
 	}
 
-	private void flushDBS() {
+	private void flushDBS() throws InterruptedException {
 		if (dbs.isEmpty())
 			return;
 		final List<DataBlock> currentList = dbs;
 		dbs = new ArrayList<DataBlock>();
 		currSize = 0;
-		futures.add(exec.submit(new Callable<Void>() {
-			@Override
-			public Void call() {
+		sem.acquire();
 
-				LevelFile curr = null;
+		cont.incrementAndGet();
+
+		exec.execute(new Runnable() {
+			@Override
+			public void run() {
+
 				try {
-					curr = LevelFile.newFile(level.getCwd().toString(),
-							level.getOpts(), level.level(),
-							level.getLastLevelIndex());
-				} catch (Exception e1) {
-					e1.printStackTrace();
-				}
-				int size = 0;
-				long time = System.currentTimeMillis();
-				for (DataBlock dataBlock2 : currentList) {
+					LevelFile curr = null;
 					try {
-						curr.put(dataBlock2);
-						if (trottle) {
-							size += dataBlock2.size();
-							long diff = (System.currentTimeMillis() - time);
-							if (size / ((float) diff) > rate) { // 10MB per sec
-								long l = (long) ((size / (float) rate) - diff);
-								// System.out.println("Current rate exceeded "
-								// + (size / ((float) diff)) + " waiting " + l +
-								// " ms");
-								Thread.sleep(l);
-								size = 0;
-								time = System.currentTimeMillis();
+						curr = LevelFile.newFile(level.getCwd().toString(),
+								level.getOpts(), level.level(),
+								level.getLastLevelIndex());
+						curr.setCache(level.getFile().getCache());
+					} catch (Exception e1) {
+						e1.printStackTrace();
+					}
+					int size = 0;
+					long time = System.currentTimeMillis();
+					Iterator<DataBlock> it = currentList.iterator();
+					while (it.hasNext()) {
+						DataBlock dataBlock = (DataBlock) it.next();
+						try {
+							curr.put(dataBlock);
+							if (trottle) {
+								size += dataBlock.size();
+								long diff = (System.currentTimeMillis() - time);
+								if (size / ((float) diff) > rate) { // 10MB per
+																	// sec
+									long l = (long) ((size / (float) rate) - diff);
+									// System.out.println("Current rate exceeded "
+									// + (size / ((float) diff)) + " waiting " +
+									// l +
+									// " ms");
+									Thread.sleep(l);
+									size = 0;
+									time = System.currentTimeMillis();
+								}
 							}
+						} catch (Exception e) {
+							e.printStackTrace();
 						}
+						it.remove();
+					}
+
+					try {
+						curr.commitAndPersist();
+						curr.close();
+
 					} catch (Exception e) {
 						e.printStackTrace();
 					}
-
+					try {
+						level.add(curr);
+					} catch (Exception e) {
+						e.printStackTrace();
+					}
+				} finally {
+					sem.release();
+					synchronized (cont) {
+						cont.decrementAndGet();
+						cont.notify();
+					}
 				}
-
-				try {
-					curr.commitAndPersist();
-					curr.close();
-
-				} catch (Exception e) {
-					e.printStackTrace();
-				}
-				try {
-					level.add(curr);
-				} catch (Exception e) {
-					e.printStackTrace();
-				}
-				return null;
 			}
-		}));
+		});
 	}
 
 	private void flushCurrent() throws Exception {
@@ -153,9 +180,9 @@ public class CompactWriterV3 implements Writer {
 
 		// exec.shutdown();
 		// exec.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS);
-
-		for (Future<Void> future : futures) {
-			future.get();
+		synchronized (cont) {
+			while (cont.get() != 0)
+				cont.wait();
 		}
 
 	}

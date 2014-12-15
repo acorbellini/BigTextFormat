@@ -21,15 +21,17 @@ public class LevelOptions implements DataType<LevelOptions> {
 
 	public Compressor comp = CompressionType.SNAPPY.getComp();
 	public int minMergeElements = 10;
-	public int maxCompactorThreads = 3;
+	public int maxCompactorThreads = 6;
 	public int maxWriterThreads = 20;
 	public int sizeModifier = 3;
 	public float maxSize = 50 * 1024 * 1024;
-	public int intersectSplit = 8;
+	public int intersectSplit = 10;
 	public boolean splitMemtable = true;
 	public boolean splitMergedFiles = true;
 
 	public boolean appendOnlyMode = false;
+
+	public int maxMergeElements = 4;
 
 	public LevelOptions setAppendOnly(boolean append) {
 		this.appendOnlyMode = append;

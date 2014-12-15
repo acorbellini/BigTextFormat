@@ -39,10 +39,10 @@ public class CompactWriterV2 implements Writer {
 	}
 
 	private void check() throws Exception {
-		float min = Math.min(level.getOpts().maxSize,
-				((level.level() / (float) level.getOpts().sizeModifier) + 1)
-						* level.getOpts().baseSize);
-		if (currWriter.size() > min
+		// float min = Math.min(level.getOpts().maxSize,
+		// ((level.level() / (float) level.getOpts().sizeModifier) + 1)
+		// * level.getOpts().baseSize);
+		if (currWriter.size() > level.getOpts().baseSize
 				|| (level.level() > 0 && curr.getMinKey() != null && level
 						.getFile().getLevel(level.level() + 1)
 						.intersectSize(curr.getMinKey(), curr.getMaxKey()) >= level

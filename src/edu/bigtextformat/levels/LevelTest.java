@@ -43,7 +43,7 @@ public class LevelTest {
 				.setMaxMemTablesWriting(5).setMemTableSize(8 * 1024 * 1024)
 				.setBaseSize(2 * 1024 * 1024).setMaxLevel0Files(4)
 				.setCompactLevel0Threshold(4).setMaxLevelFiles(10)
-				.setMaxBlockSize(128 * 1024)
+				.setMaxBlockSize(512 * 1024)
 				// .setAppendOnly(true)
 				.setCompressed(CompressionType.SNAPPY.getComp());
 		SortedLevelFile file = SortedLevelFile.open(PATH, opts);
