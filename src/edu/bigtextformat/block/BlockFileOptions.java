@@ -21,33 +21,28 @@ public class BlockFileOptions {
 	
 	boolean enableCache = true;
 	
-	public BlockFileOptions setEnableCache(boolean enableCache) {
-		this.enableCache = enableCache;
-		return this;
-	}
-	
-	public BlockFileOptions setSync(boolean sync) {
-		this.sync = sync;
-		return this;
-	}
-	
 	public BlockFileOptions setAppendOnly(boolean appendOnly) {
 		this.appendOnly = appendOnly;
 		return this;
 	}
-
-	public BlockFileOptions setMagic(long magic) {
-		this.magic = magic;
-		return this;
-	}
-
+	
 	public BlockFileOptions setComp(Compressor comp) {
 		this.comp = comp;
+		return this;
+	}
+	
+	public BlockFileOptions setEnableCache(boolean enableCache) {
+		this.enableCache = enableCache;
 		return this;
 	}
 
 	public BlockFileOptions setHeaderSize(int headerSize) {
 		this.headerSize = headerSize;
+		return this;
+	}
+
+	public BlockFileOptions setMagic(long magic) {
+		this.magic = magic;
 		return this;
 	}
 
@@ -58,6 +53,11 @@ public class BlockFileOptions {
 
 	public BlockFileOptions setReadOnly(boolean read) {
 		this.readOnly = read;
+		return this;
+	}
+
+	public BlockFileOptions setSync(boolean sync) {
+		this.sync = sync;
 		return this;
 	}
 

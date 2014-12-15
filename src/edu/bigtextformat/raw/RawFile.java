@@ -15,17 +15,24 @@ public abstract class RawFile implements Closeable {
 		return new RawFileChannel(path, trunc, readOnly, appendOnly, sync);
 	}
 
+	public abstract void copy(RawFile orig, long from, long len, long pos)
+			throws IOException;
+
+	public abstract void delete() throws IOException;
+
+	public abstract File getFile();
+
+	public abstract String getPath();
+
 	public abstract long length() throws Exception;
 
-	public long readLong(long i) throws Exception {
-		byte[] l = readBytes(i, 8);
-		return DataTypeUtils.byteArrayToLong(l);
-	}
+	public abstract ByteBuffer memMap(long pos, long nextBlockPos)
+			throws IOException;
 
-	public int readInt(long pos) throws Exception {
-		byte[] l = readBytes(pos, 4);
-		return DataTypeUtils.byteArrayToInt(l);
-	}
+	public abstract void read(long pos, byte[] data) throws Exception;
+
+	public abstract void read(long pos, byte[] data, int offset, int size)
+			throws Exception;
 
 	public byte[] readBytes(long i, int size) throws Exception {
 		byte[] ret = new byte[size];
@@ -33,26 +40,19 @@ public abstract class RawFile implements Closeable {
 		return ret;
 	}
 
-	public abstract void write(long pos, byte[] byteArray) throws Exception;
+	public int readInt(long pos) throws Exception {
+		byte[] l = readBytes(pos, 4);
+		return DataTypeUtils.byteArrayToInt(l);
+	}
 
-	public abstract void writeByte(long l, byte b) throws Exception;
-
-	public abstract void read(long pos, byte[] data, int offset, int size)
-			throws Exception;
+	public long readLong(long i) throws Exception {
+		byte[] l = readBytes(i, 8);
+		return DataTypeUtils.byteArrayToLong(l);
+	}
 
 	public abstract void sync() throws IOException;
 
-	public abstract void read(long pos, byte[] data) throws Exception;
+	public abstract void write(long pos, byte[] byteArray) throws Exception;
 
-	public abstract ByteBuffer memMap(long pos, long nextBlockPos)
-			throws IOException;
-
-	public abstract File getFile();
-
-	public abstract void delete() throws IOException;
-
-	public abstract void copy(RawFile orig, long from, long len, long pos)
-			throws IOException;
-
-	public abstract String getPath();
+	public abstract void writeByte(long l, byte b) throws Exception;
 }

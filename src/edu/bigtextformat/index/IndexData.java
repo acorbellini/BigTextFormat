@@ -16,6 +16,18 @@ import edu.jlime.util.compression.CompressionType;
 import edu.jlime.util.compression.Compressor;
 
 public class IndexData implements DataType<IndexData> {
+	public static IndexData create(BplusIndex bplusIndex, Block b, long parent,
+			int level, boolean compressed, Compressor comp) throws Exception {
+		return new IndexData(bplusIndex, b, parent, level, compressed, comp);
+	}
+
+	public static IndexData read(BplusIndex bplusIndex, Block block)
+			throws Exception {
+		IndexData data = new IndexData(bplusIndex, block, -1, -1, false, null);
+		data.fromByteArray(block.payload());
+		return data;
+	}
+
 	int level;
 
 	long parent;
@@ -50,8 +62,62 @@ public class IndexData implements DataType<IndexData> {
 		this.comp = comp;
 	}
 
-	public int level() {
+	@Override
+	public IndexData fromByteArray(byte[] data) throws Exception {
+		ByteBuffer buff = new ByteBuffer(data);
+		this.level = buff.getInt();
+		this.parent = buff.getLong();
+		this.prev = buff.getLong();
+		this.next = buff.getLong();
+		this.compressed = buff.getBoolean();
+		if (compressed)
+			this.comp = CompressionType.getByID(buff.get());
+		byte[] listsAsBytes = buff.getByteArray();
+		if (this.compressed)
+			listsAsBytes = comp.uncompress(listsAsBytes);
+		ByteBuffer lists = new ByteBuffer(listsAsBytes);
+		this.keys = lists.getByteArrayList();
+		this.values = lists.getByteArrayList();
+		return this;
+	}
+
+	public byte[] get(byte[] k) {
+		for (int i = 0; i < keys.size(); i++) {
+			if (Arrays.equals(keys.get(i), k)) {
+				return values.get(i);
+			}
+		}
+		return null;
+	}
+
+	public Block getBlock() {
+		return block;
+	}
+
+	public byte[] getFirstSon() {
+		if (values.isEmpty())
+			return null;
+		return values.get(0);
+	}
+
+	public List<byte[]> getKeys() {
+		return keys;
+	}
+
+	public int getLevel() {
 		return level;
+	}
+
+	public long getNext() {
+		return next;
+	}
+
+	public long getParent() {
+		return parent;
+	}
+
+	public long getPrev() {
+		return prev;
 	}
 
 	public byte[] getSon(byte[] key) {
@@ -78,6 +144,39 @@ public class IndexData implements DataType<IndexData> {
 			}
 			return values.get(values.size() - 1);
 		}
+	}
+
+	public List<byte[]> getValues() {
+		return values;
+	}
+
+	public byte[] last() {
+		if (keys.isEmpty())
+			return null;
+		return keys.get(keys.size() - 1);
+	}
+
+	public int level() {
+		return level;
+	}
+
+	public long parent() {
+		return parent;
+	}
+
+	public void persist() throws Exception {
+		this.block.setPayload(toByteArray());
+
+	}
+
+	public String print() {
+		StringBuilder builder = new StringBuilder();
+		builder.append("[");
+		for (int i = 0; i < keys.size(); i++) {
+			builder.append(index.getFormat().print(keys.get(i)));
+		}
+		builder.append("]");
+		return builder.toString();
 	}
 
 	public String printSons() throws Exception {
@@ -166,8 +265,47 @@ public class IndexData implements DataType<IndexData> {
 
 	}
 
+	public void removeBelow(byte[] first) {
+		BlockFormat k = index.getFormat();
+		Iterator<byte[]> valueit = values.iterator();
+		for (Iterator<byte[]> iterator = keys.iterator(); iterator.hasNext();) {
+			byte[] bs = iterator.next();
+			valueit.next();
+			if (k.compare(first, bs) > 0) {
+				iterator.remove();
+				valueit.remove();
+			}
+		}
+	}
+
+	public void setNext(long right) {
+		this.next = right;
+	}
+
+	public void setParent(long parent) {
+		this.parent = parent;
+	}
+
+	public void setPrev(long left) {
+		this.prev = left;
+	}
+
 	public int size() {
 		return keys.size();
+	}
+
+	public IndexData split() throws Exception {
+		IndexData newData = IndexData.create(index, index.file.newEmptyBlock(),
+				parent, level, compressed, comp);
+		int mid = keys.size() / 2;
+		for (int i = 0; i < mid; i++) {
+			newData.put(keys.get(i), values.get(i), null);
+		}
+		for (int i = 0; i < mid; i++) {
+			keys.remove(0);
+			values.remove(0);
+		}
+		return newData;
 	}
 
 	@Override
@@ -192,126 +330,18 @@ public class IndexData implements DataType<IndexData> {
 		return buff.build();
 	}
 
-	@Override
-	public IndexData fromByteArray(byte[] data) throws Exception {
-		ByteBuffer buff = new ByteBuffer(data);
-		this.level = buff.getInt();
-		this.parent = buff.getLong();
-		this.prev = buff.getLong();
-		this.next = buff.getLong();
-		this.compressed = buff.getBoolean();
-		if (compressed)
-			this.comp = CompressionType.getByID(buff.get());
-		byte[] listsAsBytes = buff.getByteArray();
-		if (this.compressed)
-			listsAsBytes = comp.uncompress(listsAsBytes);
-		ByteBuffer lists = new ByteBuffer(listsAsBytes);
-		this.keys = lists.getByteArrayList();
-		this.values = lists.getByteArrayList();
-		return this;
-	}
-
-	public IndexData split() throws Exception {
-		IndexData newData = IndexData.create(index, index.file.newEmptyBlock(),
-				parent, level, compressed, comp);
-		int mid = keys.size() / 2;
-		for (int i = 0; i < mid; i++) {
-			newData.put(keys.get(i), values.get(i), null);
-		}
-		for (int i = 0; i < mid; i++) {
-			keys.remove(0);
-			values.remove(0);
-		}
-		return newData;
-	}
-
-	public byte[] last() {
+	private void update(byte[] key, byte[] newVal) {
 		if (keys.isEmpty())
-			return null;
-		return keys.get(keys.size() - 1);
-	}
-
-	public long parent() {
-		return parent;
-	}
-
-	public void removeBelow(byte[] first) {
+			return; // might happen if parent is not created
 		BlockFormat k = index.getFormat();
-		Iterator<byte[]> valueit = values.iterator();
-		for (Iterator<byte[]> iterator = keys.iterator(); iterator.hasNext();) {
-			byte[] bs = iterator.next();
-			valueit.next();
-			if (k.compare(first, bs) > 0) {
-				iterator.remove();
-				valueit.remove();
+		for (int i = 0; i < keys.size(); i++) {
+			int compare = k.compare(key, keys.get(i));
+			if (compare == 0) {
+				values.set(i, newVal);
+				return;
 			}
 		}
-	}
-
-	public byte[] get(byte[] k) {
-		for (int i = 0; i < keys.size(); i++) {
-			if (Arrays.equals(keys.get(i), k)) {
-				return values.get(i);
-			}
-		}
-		return null;
-	}
-
-	public static IndexData read(BplusIndex bplusIndex, Block block)
-			throws Exception {
-		IndexData data = new IndexData(bplusIndex, block, -1, -1, false, null);
-		data.fromByteArray(block.payload());
-		return data;
-	}
-
-	public Block getBlock() {
-		return block;
-	}
-
-	public void setNext(long right) {
-		this.next = right;
-	}
-
-	public void setPrev(long left) {
-		this.prev = left;
-	}
-
-	public static IndexData create(BplusIndex bplusIndex, Block b, long parent,
-			int level, boolean compressed, Compressor comp) throws Exception {
-		return new IndexData(bplusIndex, b, parent, level, compressed, comp);
-	}
-
-	public void persist() throws Exception {
-		this.block.setPayload(toByteArray());
-
-	}
-
-	public long getNext() {
-		return next;
-	}
-
-	public long getPrev() {
-		return prev;
-	}
-
-	public byte[] getFirstSon() {
-		if (values.isEmpty())
-			return null;
-		return values.get(0);
-	}
-
-	public List<byte[]> getValues() {
-		return values;
-	}
-
-	public String print() {
-		StringBuilder builder = new StringBuilder();
-		builder.append("[");
-		for (int i = 0; i < keys.size(); i++) {
-			builder.append(index.getFormat().print(keys.get(i)));
-		}
-		builder.append("]");
-		return builder.toString();
+		values.set(values.size() - 1, newVal);
 	}
 
 	public void updateBlockPosition() throws Exception {
@@ -340,35 +370,5 @@ public class IndexData implements DataType<IndexData> {
 			}
 		}
 
-	}
-
-	public int getLevel() {
-		return level;
-	}
-
-	private void update(byte[] key, byte[] newVal) {
-		if (keys.isEmpty())
-			return; // might happen if parent is not created
-		BlockFormat k = index.getFormat();
-		for (int i = 0; i < keys.size(); i++) {
-			int compare = k.compare(key, keys.get(i));
-			if (compare == 0) {
-				values.set(i, newVal);
-				return;
-			}
-		}
-		values.set(values.size() - 1, newVal);
-	}
-
-	public void setParent(long parent) {
-		this.parent = parent;
-	}
-
-	public long getParent() {
-		return parent;
-	}
-
-	public List<byte[]> getKeys() {
-		return keys;
 	}
 }

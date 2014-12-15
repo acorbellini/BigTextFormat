@@ -26,18 +26,18 @@ public class DataBlockImpl implements DataType<DataBlockImpl>, DataBlock {
 	private long size = 0;
 	private Long blockSize;
 
-	public DataBlockImpl(LevelFile levelFile2, long pos, long len) {
-		this.levelFile = levelFile2;
-		this.blockPos = pos;
-		this.blockSize = len;
-	}
-
 	public DataBlockImpl(byte[] k, int[] ki, byte[] v, int[] vi) {
 		this.k_list = k;
 		this.k_index = ki;
 		this.v_list = v;
 		this.v_index = vi;
 		this.size = k.length + 4 + ki.length + 4 + v.length + 4 + vi.length + 4;
+	}
+
+	public DataBlockImpl(LevelFile levelFile2, long pos, long len) {
+		this.levelFile = levelFile2;
+		this.blockPos = pos;
+		this.blockSize = len;
 	}
 
 	// public synchronized void add(byte[] k, byte[] val) {
@@ -70,17 +70,26 @@ public class DataBlockImpl implements DataType<DataBlockImpl>, DataBlock {
 	/*
 	 * (non-Javadoc)
 	 * 
-	 * @see edu.bigtextformat.levels.DataBlock#toByteArray()
+	 * @see edu.bigtextformat.levels.DataBlock#contains(byte[],
+	 * edu.bigtextformat.block.BlockFormat)
 	 */
 	@Override
-	public byte[] toByteArray() throws Exception {
-		ByteBuffer buff = new ByteBuffer(k_list.length + 4 + k_index.length * 4
-				+ 4 + v_list.length + 4 + v_index.length * 4 + 4);
-		buff.putByteArray(k_list);
-		buff.putIntArray(k_index);
-		buff.putByteArray(v_list);
-		buff.putIntArray(v_index);
-		return buff.build();
+	public boolean contains(byte[] k, BlockFormat format) {
+		int pos = search(k, format);
+		if (pos < 0)
+			return false;
+		return true;
+
+	}
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see edu.bigtextformat.levels.DataBlock#firstKey()
+	 */
+	@Override
+	public byte[] firstKey() {
+		return getKey(0);
 	}
 
 	/*
@@ -100,134 +109,22 @@ public class DataBlockImpl implements DataType<DataBlockImpl>, DataBlock {
 		return this;
 	}
 
-	/*
-	 * (non-Javadoc)
-	 * 
-	 * @see edu.bigtextformat.levels.DataBlock#size()
-	 */
 	@Override
-	public long size() {
-		return size;
-	}
-
-	/*
-	 * (non-Javadoc)
-	 * 
-	 * @see edu.bigtextformat.levels.DataBlock#lastKey()
-	 */
-	@Override
-	public byte[] lastKey() {
-		return getKey(k_index.length - 1);
-	}
-
-	public byte[] getKey(int i) {
-		return Arrays.copyOfRange(k_list, k_index[i],
-				i + 1 >= k_index.length ? k_list.length : k_index[i + 1]);
-	}
-
-	public byte[] getValue(int i) {
-		return Arrays.copyOfRange(v_list, v_index[i],
-				i + 1 >= v_index.length ? v_list.length : v_index[i + 1]);
-	}
-
-	/*
-	 * (non-Javadoc)
-	 * 
-	 * @see edu.bigtextformat.levels.DataBlock#firstKey()
-	 */
-	@Override
-	public byte[] firstKey() {
-		return getKey(0);
-	}
-
-	public void setBlockPos(Long pos) {
-		this.blockPos = pos;
-	}
-
-	/*
-	 * (non-Javadoc)
-	 * 
-	 * @see edu.bigtextformat.levels.DataBlock#getBlock()
-	 */
-	// @Override
-	// public Block getBlock() {
-	// return b;
-	// }
-
-	/*
-	 * (non-Javadoc)
-	 * 
-	 * @see edu.bigtextformat.levels.DataBlock#contains(byte[],
-	 * edu.bigtextformat.block.BlockFormat)
-	 */
-	@Override
-	public boolean contains(byte[] k, BlockFormat format) {
+	public byte[] get(byte[] k, BlockFormat format) {
 		int pos = search(k, format);
 		if (pos < 0)
-			return false;
-		return true;
-
+			return null;
+		return getValue(pos);
 	}
 
-	private int search(byte[] k, BlockFormat format) {
-		boolean found = false;
-		int lo = 0;
-		int hi = k_index.length - 1;
-		int cont = 0;
-		while (lo <= hi && !found) {
-			int mid = lo + (hi - lo) / 2;
-			byte[] key = getKey(mid);
-			int comp = format.compare(k, key);
-			if (comp < 0) {
-				hi = mid - 1;
-				cont = lo;
-			} else if (comp > 0) {
-				lo = mid + 1;
-				cont = lo;
-			} else {
-				found = true;
-				cont = mid;
-			}
-		}
-		if (!found)
-			cont = -cont - 1;
-		return cont;
-	}
-
-	/*
-	 * (non-Javadoc)
-	 * 
-	 * @see edu.bigtextformat.levels.DataBlock#iterator()
-	 */
 	@Override
-	public DataBlockIterator iterator() {
-		return new DataBlockIterator(this);
+	public Long getBlockPos() {
+		return blockPos;
 	}
 
-	/*
-	 * (non-Javadoc)
-	 * 
-	 * @see
-	 * edu.bigtextformat.levels.DataBlock#print(edu.bigtextformat.block.BlockFormat
-	 * )
-	 */
 	@Override
-	public String print(BlockFormat format) {
-		StringBuilder builder = new StringBuilder();
-		for (int j = 0; j < k_index.length; j++) {
-			builder.append(format.print(getKey(j)));
-		}
-		return builder.toString();
-	}
-
-	/*
-	 * (non-Javadoc)
-	 * 
-	 * @see edu.bigtextformat.levels.DataBlock#indexSize()
-	 */
-	@Override
-	public int indexSize() {
-		return k_index.length;
+	public LevelFile getFile() {
+		return levelFile;
 	}
 
 	/*
@@ -258,9 +155,104 @@ public class DataBlockImpl implements DataType<DataBlockImpl>, DataBlock {
 		return Pair.create(cs, getValue(pos));
 	}
 
+	public byte[] getKey(int i) {
+		return Arrays.copyOfRange(k_list, k_index[i],
+				i + 1 >= k_index.length ? k_list.length : k_index[i + 1]);
+	}
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see edu.bigtextformat.levels.DataBlock#getBlock()
+	 */
+	// @Override
+	// public Block getBlock() {
+	// return b;
+	// }
+
 	@Override
 	public Long getLen() {
 		return blockSize;
+	}
+
+	public byte[] getValue(int i) {
+		return Arrays.copyOfRange(v_list, v_index[i],
+				i + 1 >= v_index.length ? v_list.length : v_index[i + 1]);
+	}
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see edu.bigtextformat.levels.DataBlock#indexSize()
+	 */
+	@Override
+	public int indexSize() {
+		return k_index.length;
+	}
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see edu.bigtextformat.levels.DataBlock#iterator()
+	 */
+	@Override
+	public DataBlockIterator iterator() {
+		return new DataBlockIterator(this);
+	}
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see edu.bigtextformat.levels.DataBlock#lastKey()
+	 */
+	@Override
+	public byte[] lastKey() {
+		return getKey(k_index.length - 1);
+	}
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see
+	 * edu.bigtextformat.levels.DataBlock#print(edu.bigtextformat.block.BlockFormat
+	 * )
+	 */
+	@Override
+	public String print(BlockFormat format) {
+		StringBuilder builder = new StringBuilder();
+		for (int j = 0; j < k_index.length; j++) {
+			builder.append(format.print(getKey(j)));
+		}
+		return builder.toString();
+	}
+
+	private int search(byte[] k, BlockFormat format) {
+		boolean found = false;
+		int lo = 0;
+		int hi = k_index.length - 1;
+		int cont = 0;
+		while (lo <= hi && !found) {
+			int mid = lo + (hi - lo) / 2;
+			byte[] key = getKey(mid);
+			int comp = format.compare(k, key);
+			if (comp < 0) {
+				hi = mid - 1;
+				cont = lo;
+			} else if (comp > 0) {
+				lo = mid + 1;
+				cont = lo;
+			} else {
+				found = true;
+				cont = mid;
+			}
+		}
+		if (!found)
+			cont = -cont - 1;
+		return cont;
+	}
+
+	public void setBlockPos(Long pos) {
+		this.blockPos = pos;
 	}
 
 	public void setBlockSize(Long len) {
@@ -268,21 +260,29 @@ public class DataBlockImpl implements DataType<DataBlockImpl>, DataBlock {
 
 	}
 
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see edu.bigtextformat.levels.DataBlock#size()
+	 */
 	@Override
-	public LevelFile getFile() {
-		return levelFile;
+	public long size() {
+		return size;
 	}
 
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see edu.bigtextformat.levels.DataBlock#toByteArray()
+	 */
 	@Override
-	public byte[] get(byte[] k, BlockFormat format) {
-		int pos = search(k, format);
-		if (pos < 0)
-			return null;
-		return getValue(pos);
-	}
-
-	@Override
-	public Long getBlockPos() {
-		return blockPos;
+	public byte[] toByteArray() throws Exception {
+		ByteBuffer buff = new ByteBuffer(k_list.length + 4 + k_index.length * 4
+				+ 4 + v_list.length + 4 + v_index.length * 4 + 4);
+		buff.putByteArray(k_list);
+		buff.putIntArray(k_index);
+		buff.putByteArray(v_list);
+		buff.putIntArray(v_index);
+		return buff.build();
 	}
 }

@@ -13,6 +13,11 @@ public class Record implements BlockData {
 		this.data = new Object[format.size()];
 	}
 
+	public Record set(String k, Object val) {
+		data[format.getPos(k)] = val;
+		return this;
+	}
+
 	@Override
 	public byte[] toByteArray() {
 		ByteBuffer buff = new ByteBuffer();
@@ -21,11 +26,6 @@ public class Record implements BlockData {
 			buff.putRawByteArray(format.getFormat(i++).toBytes(object));
 		}
 		return buff.build();
-	}
-
-	public Record set(String k, Object val) {
-		data[format.getPos(k)] = val;
-		return this;
 	}
 
 }

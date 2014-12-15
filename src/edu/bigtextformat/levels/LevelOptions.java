@@ -33,8 +33,40 @@ public class LevelOptions implements DataType<LevelOptions> {
 
 	public int maxMergeElements = 4;
 
+	@Override
+	public LevelOptions fromByteArray(byte[] data) throws Exception {
+		ByteBuffer buff = new ByteBuffer(data);
+		maxBlockSize = buff.getInt();
+		memTableSize = buff.getInt();
+		maxMemTablesWriting = buff.getInt();
+		baseSize = buff.getInt();
+		maxLevel0Files = buff.getInt();
+		maxLevelFiles = buff.getInt();
+		minMergeElements = buff.getInt();
+		compactLevel0Threshold = buff.getInt();
+		maxCompactorThreads = buff.getInt();
+		maxWriterThreads = buff.getInt();
+		int type = buff.getInt();
+		format = BlockFormat.getFormat(BlockFormats.get(type),
+				buff.getByteArray());
+		byte compType = buff.get();
+		if (compType != -1)
+			this.comp = CompressionType.getByID(compType);
+		return this;
+	}
+
 	public LevelOptions setAppendOnly(boolean append) {
 		this.appendOnlyMode = append;
+		return this;
+	}
+
+	public LevelOptions setBaseSize(int baseSize) {
+		this.baseSize = baseSize;
+		return this;
+	}
+
+	public LevelOptions setCompactLevel0Threshold(int compactLevel0Threshold) {
+		this.compactLevel0Threshold = compactLevel0Threshold;
 		return this;
 	}
 
@@ -48,23 +80,8 @@ public class LevelOptions implements DataType<LevelOptions> {
 		return this;
 	}
 
-	public LevelOptions setMinMergeElements(int minMergeElements) {
-		this.minMergeElements = minMergeElements;
-		return this;
-	}
-
-	public LevelOptions setMaxMemTablesWriting(int maxMemTablesWriting) {
-		this.maxMemTablesWriting = maxMemTablesWriting;
-		return this;
-	}
-
-	public LevelOptions setMemTableSize(int memTableSize) {
-		this.memTableSize = memTableSize;
-		return this;
-	}
-
-	public LevelOptions setBaseSize(int baseSize) {
-		this.baseSize = baseSize;
+	public LevelOptions setMaxBlockSize(int maxBlockSize) {
+		this.maxBlockSize = maxBlockSize;
 		return this;
 	}
 
@@ -78,13 +95,18 @@ public class LevelOptions implements DataType<LevelOptions> {
 		return this;
 	}
 
-	public LevelOptions setMaxBlockSize(int maxBlockSize) {
-		this.maxBlockSize = maxBlockSize;
+	public LevelOptions setMaxMemTablesWriting(int maxMemTablesWriting) {
+		this.maxMemTablesWriting = maxMemTablesWriting;
 		return this;
 	}
 
-	public LevelOptions setCompactLevel0Threshold(int compactLevel0Threshold) {
-		this.compactLevel0Threshold = compactLevel0Threshold;
+	public LevelOptions setMemTableSize(int memTableSize) {
+		this.memTableSize = memTableSize;
+		return this;
+	}
+
+	public LevelOptions setMinMergeElements(int minMergeElements) {
+		this.minMergeElements = minMergeElements;
 		return this;
 	}
 
@@ -109,27 +131,5 @@ public class LevelOptions implements DataType<LevelOptions> {
 		else
 			buff.put((byte) -1);
 		return buff.build();
-	}
-
-	@Override
-	public LevelOptions fromByteArray(byte[] data) throws Exception {
-		ByteBuffer buff = new ByteBuffer(data);
-		maxBlockSize = buff.getInt();
-		memTableSize = buff.getInt();
-		maxMemTablesWriting = buff.getInt();
-		baseSize = buff.getInt();
-		maxLevel0Files = buff.getInt();
-		maxLevelFiles = buff.getInt();
-		minMergeElements = buff.getInt();
-		compactLevel0Threshold = buff.getInt();
-		maxCompactorThreads = buff.getInt();
-		maxWriterThreads = buff.getInt();
-		int type = buff.getInt();
-		format = BlockFormat.getFormat(BlockFormats.get(type),
-				buff.getByteArray());
-		byte compType = buff.get();
-		if (compType != -1)
-			this.comp = CompressionType.getByID(compType);
-		return this;
 	}
 }

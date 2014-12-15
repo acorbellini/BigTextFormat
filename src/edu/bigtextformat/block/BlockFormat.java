@@ -8,21 +8,21 @@ public abstract class BlockFormat implements DataType<BlockFormat>
 // Comparator<byte[]>
 {
 
-	public abstract BlockFormat getKeyFormat();
-
-	public abstract byte[] getKey(BlockData data);
-
-	// public abstract int compare(byte[] d1, byte[] d2);
-
 	public static BlockFormat getFormat(BlockFormats f, byte[] bs)
 			throws Exception {
 		// BlockFormats f = BlockFormats.valueOf(type);
 		return f.fromByteArray(bs);
 	}
 
-	public abstract String print(byte[] bs);
+	public abstract int compare(byte[] d1, byte[] d2);
+
+	// public abstract int compare(byte[] d1, byte[] d2);
+
+	public abstract byte[] getKey(BlockData data);
+
+	public abstract BlockFormat getKeyFormat();
 
 	public abstract BlockFormats getType();
 	
-	public abstract int compare(byte[] d1, byte[] d2);
+	public abstract String print(byte[] bs);
 }

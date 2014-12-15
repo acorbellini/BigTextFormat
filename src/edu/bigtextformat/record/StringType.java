@@ -12,9 +12,8 @@ public class StringType implements FormatType<String> {
 	}
 
 	@Override
-	public int size(int offset, byte[] d) {
-		ByteBuffer buff = new ByteBuffer(d, offset);
-		return 4 + buff.getInt();
+	public String get(byte[] k) {
+		return new String(k);
 	}
 
 	@Override
@@ -25,8 +24,14 @@ public class StringType implements FormatType<String> {
 	}
 
 	@Override
-	public String get(byte[] k) {
-		return new String(k);
+	public FormatTypes getType() {
+		return FormatTypes.STRING;
+	}
+
+	@Override
+	public int size(int offset, byte[] d) {
+		ByteBuffer buff = new ByteBuffer(d, offset);
+		return 4 + buff.getInt();
 	}
 
 	@Override
@@ -35,11 +40,6 @@ public class StringType implements FormatType<String> {
 		ByteBuffer buff = new ByteBuffer();
 		buff.putString(s);
 		return buff.build();
-	}
-
-	@Override
-	public FormatTypes getType() {
-		return FormatTypes.STRING;
 	}
 
 }

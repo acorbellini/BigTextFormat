@@ -18,13 +18,85 @@ import edu.jlime.util.compression.CompressionType;
 import edu.jlime.util.compression.Compressor;
 
 public class BlockFile implements Closeable, Iterable<Block> {
-	private static final long MAX_CACHE_SIZE = 0;
-	private Cache<BlockID, Block> blocks = CacheBuilder.newBuilder()
-			.softValues().maximumSize(MAX_CACHE_SIZE).build();
+	public static BlockFile create(String path, BlockFileOptions opts)
+			throws Exception {
+		RawFile file = RawFile.getChannelRawFile(path, opts.trunc,
+				opts.readOnly, opts.appendOnly, opts.sync);
+		BlockFile ret = new BlockFile(file);
+		ret.minSize = opts.minSize;
+		ret.currentPos = file.length();
+		ret.enableCache = opts.enableCache;
+		if (file.length() == 0l) {
+			ret.reserve(8);
+			file.write(0, DataTypeUtils.longToByteArray(opts.magic));
+		}
+		if (file.length() == 8l || !opts.appendOnly) {
+			Block headerBlock = ret.getBlock(8l, opts.headerSize, true);
+			headerBlock.setFixed(true);
+			// headerBlock.setMemoryMapped(true);
+			ret.header = Header.open(headerBlock);
+			if (opts.comp != null) {
+				ret.header.putData("comp", new byte[] { opts.comp.getType()
+						.getId() });
+				ret.comp = opts.comp;
+				ret.setCompressed(opts.comp);
+			} else
+				ret.header.putData("comp", new byte[] { -1 });
+			ret.header.putData("minSize",
+					DataTypeUtils.intToByteArray(opts.minSize));
+		} else {
+			ret.header = Header.emptyHeader();
+		}
+
+		return ret;
+	}
+	public static BlockFile open(String path, BlockFileOptions opts)
+			throws Exception {
+		RawFile file = RawFile.getChannelRawFile(path, false, opts.readOnly,
+				false, false);
+
+		BlockFile ret = new BlockFile(file);
+
+		ret.currentPos = file.length();
+		if (file.length() > 0l) {
+			// exists
+			ret.magic = file.readLong(0);
+			if (ret.magic != opts.magic)
+				throw new Exception("Wrong File Type expected "
+						+ new String(DataTypeUtils.longToByteArray(opts.magic))
+						+ " and got "
+						+ new String(DataTypeUtils.longToByteArray(ret.magic))
+						+ " for file " + path);
+		} else {
+			file.close();
+			throw new Exception("Corrupted File: File " + file.getFile()
+					+ " length is 0");
+		}
+		Block headerBlock = ret.getBlock(8l, -1, false);
+		// headerBlock.setFixed(true);
+		// headerBlock.setMemoryMapped(true);
+		ret.header = Header.open(headerBlock);
+
+		byte compression = ret.header.get("comp")[0];
+		if (compression != -1)
+			ret.comp = CompressionType.getByID(compression);
+		ret.minSize = DataTypeUtils.byteArrayToInt(ret.header.get("minSize"));
+		return ret;
+	}
 
 	// boolean reuseDeleted;
 
 	// TreeMap<Integer, List<Long>> deleted = new TreeMap<>();
+
+	public static BlockFile open(String path, long magicCheck) throws Exception {
+		return open(path, new BlockFileOptions().setMagic(magicCheck)
+				.setReadOnly(true));
+	}
+
+	private static final long MAX_CACHE_SIZE = 0;
+
+	private Cache<BlockID, Block> blocks = CacheBuilder.newBuilder()
+			.softValues().maximumSize(MAX_CACHE_SIZE).build();
 
 	private List<BlockPosChangeListener> blockPosChangeListeners = new ArrayList<>();
 
@@ -35,37 +107,43 @@ public class BlockFile implements Closeable, Iterable<Block> {
 	long magic;
 
 	private int minSize;
-
 	private Compressor comp;
-
-	UUID id = UUID.randomUUID();
-
-	long currentPos = 0;
-	private boolean enableCache;
 
 	// private static WeakHashMap<Block, Boolean> current = new WeakHashMap<>();
 	//
 	// private static WeakHashMap<Long, Block> blocks = new WeakHashMap<>();
 
+	UUID id = UUID.randomUUID();
+
+	long currentPos = 0;
+
+	private boolean enableCache;
+
 	private BlockFile(RawFile file) {
 		this.file = file;
 	}
 
-	public void setCompressed(Compressor comp) {
-		this.comp = comp;
+	public void addPosListener(BlockPosChangeListener l) {
+		blockPosChangeListeners.add(l);
 	}
 
-	void writeBlock(long pos, Block block, byte[] bytes) throws Exception {
-		if (pos <= 0)
-			throw new Exception("You shouldn't be writing on pos 0");
-		file.write(pos, bytes);
-		if (enableCache)
-			synchronized (blocks) {
-				blocks.put(BlockID.create(id, pos), block);
-			}
+	public long appendBlock(BlockFile orig, long pos, long long1)
+			throws IOException {
+		long s = reserve(long1);
+		this.file.copy(orig.getRawFile(), pos, long1, s);
+		return s;
+	}
 
-		// if (header != null && file.length() != header.getFsize())
-		// header.setFileSize(file.length());
+	public void close() throws IOException {
+		file.close();
+	}
+
+	public void delete() throws IOException {
+		file.delete();
+	}
+
+	public void flush() throws IOException {
+		file.sync();
 	}
 
 	public Block getBlock(long pos, boolean create) throws Exception {
@@ -109,97 +187,51 @@ public class BlockFile implements Closeable, Iterable<Block> {
 		}
 	}
 
-	@Override
-	public String toString() {
-		return this.file.getFile().getPath();
+	protected Block getFirstBlock() throws Exception {
+		return getBlock(getFirstBlockPos(), false);
+	}
+
+	public long getFirstBlockPos() {
+		return 8l + header.size();
 	}
 
 	public Header getHeader() {
 		return header;
 	}
 
-	public static BlockFile open(String path, BlockFileOptions opts)
-			throws Exception {
-		RawFile file = RawFile.getChannelRawFile(path, false, opts.readOnly,
-				false, false);
+	public Block getLastBlock() throws Exception {
 
-		BlockFile ret = new BlockFile(file);
+		long pos = getLastBlockPosition();
 
-		ret.currentPos = file.length();
-		if (file.length() > 0l) {
-			// exists
-			ret.magic = file.readLong(0);
-			if (ret.magic != opts.magic)
-				throw new Exception("Wrong File Type expected "
-						+ new String(DataTypeUtils.longToByteArray(opts.magic))
-						+ " and got "
-						+ new String(DataTypeUtils.longToByteArray(ret.magic))
-						+ " for file " + path);
-		} else {
-			file.close();
-			throw new Exception("Corrupted File: File " + file.getFile()
-					+ " length is 0");
-		}
-		Block headerBlock = ret.getBlock(8l, -1, false);
-		// headerBlock.setFixed(true);
-		// headerBlock.setMemoryMapped(true);
-		ret.header = Header.open(headerBlock);
-
-		byte compression = ret.header.get("comp")[0];
-		if (compression != -1)
-			ret.comp = CompressionType.getByID(compression);
-		ret.minSize = DataTypeUtils.byteArrayToInt(ret.header.get("minSize"));
-		return ret;
+		return getBlock(pos, false);
 	}
 
-	public static BlockFile create(String path, BlockFileOptions opts)
-			throws Exception {
-		RawFile file = RawFile.getChannelRawFile(path, opts.trunc,
-				opts.readOnly, opts.appendOnly, opts.sync);
-		BlockFile ret = new BlockFile(file);
-		ret.minSize = opts.minSize;
-		ret.currentPos = file.length();
-		ret.enableCache = opts.enableCache;
-		if (file.length() == 0l) {
-			ret.reserve(8);
-			file.write(0, DataTypeUtils.longToByteArray(opts.magic));
-		}
-		if (file.length() == 8l || !opts.appendOnly) {
-			Block headerBlock = ret.getBlock(8l, opts.headerSize, true);
-			headerBlock.setFixed(true);
-			// headerBlock.setMemoryMapped(true);
-			ret.header = Header.open(headerBlock);
-			if (opts.comp != null) {
-				ret.header.putData("comp", new byte[] { opts.comp.getType()
-						.getId() });
-				ret.comp = opts.comp;
-				ret.setCompressed(opts.comp);
-			} else
-				ret.header.putData("comp", new byte[] { -1 });
-			ret.header.putData("minSize",
-					DataTypeUtils.intToByteArray(opts.minSize));
-		} else {
-			ret.header = Header.emptyHeader();
-		}
-
-		return ret;
+	public long getLastBlockPosition() throws Exception {
+		int size = file.readInt(file.length() - 8 - 4);
+		long pos = file.length() - size;
+		return pos;
 	}
 
-	public Block newEmptyBlock() throws Exception {
-		return newBlock(null, minSize, false, true);
+	public RawFile getRawFile() {
+		return file;
 	}
 
-	public long reserve(long long1) {
-		synchronized (blocks) {
-			// Entry<Integer, List<Long>> e = deleted.ceilingEntry(max);
-			// if (e == null || e.getValue().isEmpty()) {
-			long res = currentPos;
-			currentPos += long1;
-			return res;
-			// } else {
-			// return e.getValue().remove(0);
-			// }
+	public boolean isEmpty() throws Exception {
+		return length() == getFirstBlockPos();
+	}
+
+	@Override
+	public Iterator<Block> iterator() {
+		try {
+			return new BlockFileIterator(this);
+		} catch (Exception e) {
+			e.printStackTrace();
+			return null;
 		}
+	}
+
+	public long length() throws Exception {
+		return file.length();
 	}
 
 	public Block newBlock(byte[] bytes) throws Exception {
@@ -217,34 +249,22 @@ public class BlockFile implements Closeable, Iterable<Block> {
 		return b;
 	}
 
-	public void close() throws IOException {
-		file.close();
+	public Block newEmptyBlock() throws Exception {
+		return newBlock(null, minSize, false, true);
 	}
 
-	public long length() throws Exception {
-		return file.length();
+	public Block newFixedBlock(byte[] byteArray) throws Exception {
+		return newBlock(byteArray, minSize, true, true);
 	}
 
-	public boolean isEmpty() throws Exception {
-		return length() == getFirstBlockPos();
+	public Block newUncompressedFixedBlock(byte[] byteArray) throws Exception {
+		return newBlock(byteArray, minSize, true, false);
 	}
 
-	@Override
-	public Iterator<Block> iterator() {
-		try {
-			return new BlockFileIterator(this);
-		} catch (Exception e) {
-			e.printStackTrace();
-			return null;
+	void notifyPosChanged(Block b, long oldPos) throws Exception {
+		for (BlockPosChangeListener block : blockPosChangeListeners) {
+			block.changedPosition(b, oldPos);
 		}
-	}
-
-	protected Block getFirstBlock() throws Exception {
-		return getBlock(getFirstBlockPos(), false);
-	}
-
-	public long getFirstBlockPos() {
-		return 8l + header.size();
 	}
 
 	public void removeBlock(long pos, long size, byte status) throws Exception {
@@ -260,66 +280,46 @@ public class BlockFile implements Closeable, Iterable<Block> {
 		}
 	}
 
-	public RawFile getRawFile() {
-		return file;
+	public void removePosListener(BlockPosChangeListener l) {
+		blockPosChangeListeners.remove(l);
 	}
 
-	public void addPosListener(BlockPosChangeListener l) {
-		blockPosChangeListeners.add(l);
-	}
-
-	void notifyPosChanged(Block b, long oldPos) throws Exception {
-		for (BlockPosChangeListener block : blockPosChangeListeners) {
-			block.changedPosition(b, oldPos);
+	public long reserve(long long1) {
+		synchronized (blocks) {
+			// Entry<Integer, List<Long>> e = deleted.ceilingEntry(max);
+			// if (e == null || e.getValue().isEmpty()) {
+			long res = currentPos;
+			currentPos += long1;
+			return res;
+			// } else {
+			// return e.getValue().remove(0);
+			// }
 		}
 	}
 
-	public void removePosListener(BlockPosChangeListener l) {
-		blockPosChangeListeners.remove(l);
+	public void setCompressed(Compressor comp) {
+		this.comp = comp;
 	}
 
 	public long size() throws Exception {
 		return file.length();
 	}
 
-	public void delete() throws IOException {
-		file.delete();
+	@Override
+	public String toString() {
+		return this.file.getFile().getPath();
 	}
 
-	public Block newFixedBlock(byte[] byteArray) throws Exception {
-		return newBlock(byteArray, minSize, true, true);
-	}
+	void writeBlock(long pos, Block block, byte[] bytes) throws Exception {
+		if (pos <= 0)
+			throw new Exception("You shouldn't be writing on pos 0");
+		file.write(pos, bytes);
+		if (enableCache)
+			synchronized (blocks) {
+				blocks.put(BlockID.create(id, pos), block);
+			}
 
-	public Block newUncompressedFixedBlock(byte[] byteArray) throws Exception {
-		return newBlock(byteArray, minSize, true, false);
-	}
-
-	public Block getLastBlock() throws Exception {
-
-		long pos = getLastBlockPosition();
-
-		return getBlock(pos, false);
-	}
-
-	public long getLastBlockPosition() throws Exception {
-		int size = file.readInt(file.length() - 8 - 4);
-		long pos = file.length() - size;
-		return pos;
-	}
-
-	public long appendBlock(BlockFile orig, long pos, long long1)
-			throws IOException {
-		long s = reserve(long1);
-		this.file.copy(orig.getRawFile(), pos, long1, s);
-		return s;
-	}
-
-	public static BlockFile open(String path, long magicCheck) throws Exception {
-		return open(path, new BlockFileOptions().setMagic(magicCheck)
-				.setReadOnly(true));
-	}
-
-	public void flush() throws IOException {
-		file.sync();
+		// if (header != null && file.length() != header.getFsize())
+		// header.setFileSize(file.length());
 	}
 }

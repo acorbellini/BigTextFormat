@@ -11,8 +11,8 @@ public class LongType implements FormatType<Long> {
 	}
 
 	@Override
-	public int size(int offset, byte[] d) {
-		return 8;
+	public Long get(byte[] k) {
+		return new ByteBuffer(k).getLong();
 	}
 
 	@Override
@@ -21,8 +21,13 @@ public class LongType implements FormatType<Long> {
 	}
 
 	@Override
-	public Long get(byte[] k) {
-		return new ByteBuffer(k).getLong();
+	public FormatTypes getType() {
+		return FormatTypes.LONG;
+	}
+
+	@Override
+	public int size(int offset, byte[] d) {
+		return 8;
 	}
 
 	@Override
@@ -31,11 +36,6 @@ public class LongType implements FormatType<Long> {
 		ByteBuffer b = new ByteBuffer(8);
 		b.putLong(i);
 		return b.build();
-	}
-
-	@Override
-	public FormatTypes getType() {
-		return FormatTypes.LONG;
 	}
 
 }

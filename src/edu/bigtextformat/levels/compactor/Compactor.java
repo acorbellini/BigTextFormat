@@ -52,6 +52,72 @@ public class Compactor {
 		});
 	}
 
+	private synchronized void changeStateTo(int newState) {
+		state = newState;
+		notifyAll();
+	}
+
+	private synchronized boolean checkState(int s) {
+		return state == s;
+	}
+
+	public void compact(int level) {
+		if (!started)
+			return;
+		synchronized (running) {
+			if (running.contains(level))
+				return;
+			else
+				running.add(level);
+		}
+		exec.execute(new CompactorWorker(this, file, level, execWriter));
+
+	}
+
+	public synchronized void forcecompact() {
+		forceCompact = true;
+		waitEmptyRunList();
+		int currLevels = file.getMaxLevel();
+		for (int i = 0; i <= currLevels; i++) {
+			compact(i);
+		}
+		waitEmptyRunList();
+
+		forceCompact = false;
+	}
+
+	public boolean isForceCompact() {
+		return forceCompact;
+	}
+
+	public void removeRunning(int level) {
+		synchronized (running) {
+			running.remove(level);
+			if (running.isEmpty())
+				running.notifyAll();
+		}
+	}
+
+	public synchronized void setChanged() {
+		if (!checkState(STOPPED) && !checkState(STOPPING))
+			changeStateTo(COMPACTING);
+	}
+
+	public void start() {
+		started = true;
+	}
+
+	private void waitEmptyRunList() {
+		synchronized (running) {
+			while (!running.isEmpty())
+				try {
+					running.wait();
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
+		}
+	}
+
 	public synchronized void waitFinished() {
 		synchronized (running) {
 			while (!running.isEmpty())
@@ -73,72 +139,6 @@ public class Compactor {
 			execWriter.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS);
 		} catch (InterruptedException e) {
 			e.printStackTrace();
-		}
-	}
-
-	private synchronized void changeStateTo(int newState) {
-		state = newState;
-		notifyAll();
-	}
-
-	public void start() {
-		started = true;
-	}
-
-	public void compact(int level) {
-		if (!started)
-			return;
-		synchronized (running) {
-			if (running.contains(level))
-				return;
-			else
-				running.add(level);
-		}
-		exec.execute(new CompactorWorker(this, file, level, execWriter));
-
-	}
-
-	private synchronized boolean checkState(int s) {
-		return state == s;
-	}
-
-	public synchronized void setChanged() {
-		if (!checkState(STOPPED) && !checkState(STOPPING))
-			changeStateTo(COMPACTING);
-	}
-
-	public synchronized void forcecompact() {
-		forceCompact = true;
-		waitEmptyRunList();
-		int currLevels = file.getMaxLevel();
-		for (int i = 0; i <= currLevels; i++) {
-			compact(i);
-		}
-		waitEmptyRunList();
-
-		forceCompact = false;
-	}
-
-	private void waitEmptyRunList() {
-		synchronized (running) {
-			while (!running.isEmpty())
-				try {
-					running.wait();
-				} catch (InterruptedException e) {
-					e.printStackTrace();
-				}
-		}
-	}
-
-	public boolean isForceCompact() {
-		return forceCompact;
-	}
-
-	public void removeRunning(int level) {
-		synchronized (running) {
-			running.remove(level);
-			if (running.isEmpty())
-				running.notifyAll();
 		}
 	}
 }

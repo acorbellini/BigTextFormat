@@ -2,7 +2,11 @@ package edu.bigtextformat.util;
 
 public class Pair<T1, T2> {
 
+	public static Pair<byte[], byte[]> create(byte[] cs, byte[] cs2) {
+		return new Pair<>(cs, cs2);
+	}
 	private byte[] a;
+
 	private byte[] b;
 
 	public Pair(byte[] a, byte[] b) {
@@ -14,20 +18,16 @@ public class Pair<T1, T2> {
 		return a;
 	}
 
-	public void setA(byte[] a) {
-		this.a = a;
-	}
-
 	public byte[] getValue() {
 		return b;
 	}
 
-	public void setB(byte[] b) {
-		this.b = b;
+	public void setA(byte[] a) {
+		this.a = a;
 	}
 
-	public static Pair<byte[], byte[]> create(byte[] cs, byte[] cs2) {
-		return new Pair<>(cs, cs2);
+	public void setB(byte[] b) {
+		this.b = b;
 	}
 
 }

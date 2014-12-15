@@ -23,10 +23,6 @@ public class LevelFileReader implements Iterator<DataBlockReference> {
 		advance();
 	}
 
-	public LevelFile getFile() {
-		return file;
-	}
-
 	private void advance() throws Exception {
 		if (indexPos < index.size()) {
 
@@ -49,6 +45,15 @@ public class LevelFileReader implements Iterator<DataBlockReference> {
 			this.curr = null;
 	}
 
+	public LevelFile getFile() {
+		return file;
+	}
+
+	@Override
+	public boolean hasNext() {
+		return curr != null;
+	}
+
 	@Override
 	public DataBlockReference next() {
 		DataBlockReference ret = curr;
@@ -62,11 +67,6 @@ public class LevelFileReader implements Iterator<DataBlockReference> {
 		}
 		return ret;
 
-	}
-
-	@Override
-	public boolean hasNext() {
-		return curr != null;
 	}
 
 	@Override

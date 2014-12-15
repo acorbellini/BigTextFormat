@@ -31,18 +31,15 @@ public class LevelFileWriter {
 		curr.add(k, val);
 	}
 
-	private void flushCurrentBlock() throws Exception {
-		if (curr.size() > 0) {
-			// f.put(curr.getDB());
-			DataBlockImpl db = curr.getDB();
-			add(db);
-			curr.clear();
-		}
-	}
-
 	private void add(DataBlock db) {
 		created.add(db);
 		size += db.size();
+	}
+
+	public void addDatablock(DataBlock dataBlock) throws Exception {
+		flushCurrentBlock();
+		// f.put(dataBlock);
+		add(dataBlock);
 	}
 
 	public void close() throws Exception {
@@ -52,10 +49,13 @@ public class LevelFileWriter {
 		}
 	}
 
-	public void addDatablock(DataBlock dataBlock) throws Exception {
-		flushCurrentBlock();
-		// f.put(dataBlock);
-		add(dataBlock);
+	private void flushCurrentBlock() throws Exception {
+		if (curr.size() > 0) {
+			// f.put(curr.getDB());
+			DataBlockImpl db = curr.getDB();
+			add(db);
+			curr.clear();
+		}
 	}
 
 	public long size() {

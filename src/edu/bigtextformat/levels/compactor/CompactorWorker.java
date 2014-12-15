@@ -26,16 +26,13 @@ public class CompactorWorker implements Runnable {
 		this.exec = exec;
 	}
 
-	@Override
-	public void run() {
-		try {
-			while (exec())
-				;
-		} catch (Exception e) {
-			e.printStackTrace();
-		} finally {
-			compactor.removeRunning(level);
-		}
+	private boolean checkLevel0Conditions(Level files) {
+		return (files.size() > 0 && (compactor.isForceCompact() || files.size() >= file
+				.getOpts().compactLevel0Threshold));
+	}
+
+	private boolean checkLevelConditions(Level files) {
+		return files.size() > Math.pow(file.getOpts().maxLevelFiles, level);
 	}
 
 	private Boolean exec() throws Exception {
@@ -99,13 +96,16 @@ public class CompactorWorker implements Runnable {
 		}
 	}
 
-	private boolean checkLevel0Conditions(Level files) {
-		return (files.size() > 0 && (compactor.isForceCompact() || files.size() >= file
-				.getOpts().compactLevel0Threshold));
-	}
-
-	private boolean checkLevelConditions(Level files) {
-		return files.size() > Math.pow(file.getOpts().maxLevelFiles, level);
+	@Override
+	public void run() {
+		try {
+			while (exec())
+				;
+		} catch (Exception e) {
+			e.printStackTrace();
+		} finally {
+			compactor.removeRunning(level);
+		}
 	}
 
 }

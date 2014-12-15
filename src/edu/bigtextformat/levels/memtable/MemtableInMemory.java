@@ -17,66 +17,6 @@ import edu.jlime.util.DataTypeUtils;
 
 public class MemtableInMemory {
 
-	TreeMap<byte[], byte[]> data;
-	private Block b;
-
-	private int size = 0;
-	private BlockFormat format;
-
-	public MemtableInMemory(final BlockFormat format) {
-		this.format = format;
-		data = new TreeMap<byte[], byte[]>(new Comparator<byte[]>() {
-
-			@Override
-			public int compare(byte[] arg0, byte[] arg1) {
-				return format.compare(arg0, arg1);
-			}
-		});
-	}
-
-	public synchronized void insertOrdered(byte[] k, byte[] val) {
-		data.put(k, val);
-		size += k.length + val.length + 4 + 4;
-	}
-
-	public int size() {
-		return size;
-	}
-
-	public byte[] lastKey() {
-		return data.lastKey();
-	}
-
-	public byte[] firstKey() {
-		return data.firstKey();
-	}
-
-	public void setBlock(Block b) {
-		this.b = b;
-	}
-
-	public Block getBlock() {
-		return b;
-	}
-
-	public boolean contains(byte[] k) {
-		return data.containsKey(k);
-	}
-
-	public String print() {
-		StringBuilder builder = new StringBuilder();
-		Set<byte[]> es = data.keySet();
-		for (byte[] k : es) {
-			builder.append(format.print(k));
-		}
-		return builder.toString();
-	}
-
-	public void clear() {
-		data.clear();
-		size = 0;
-	}
-
 	public static void main(String[] args) {
 
 		List<Integer> toAdd = Arrays.asList(new Integer[] { 4, 5, 6, 1, 3, 0,
@@ -96,6 +36,44 @@ public class MemtableInMemory {
 		// for (byte[] integer : table.keys) {
 		// System.out.println(DataTypeUtils.byteArrayToInt(integer));
 		// }
+	}
+	TreeMap<byte[], byte[]> data;
+
+	private Block b;
+	private int size = 0;
+
+	private BlockFormat format;
+
+	public MemtableInMemory(final BlockFormat format) {
+		this.format = format;
+		data = new TreeMap<byte[], byte[]>(new Comparator<byte[]>() {
+
+			@Override
+			public int compare(byte[] arg0, byte[] arg1) {
+				return format.compare(arg0, arg1);
+			}
+		});
+	}
+
+	public void clear() {
+		data.clear();
+		size = 0;
+	}
+
+	public boolean contains(byte[] k) {
+		return data.containsKey(k);
+	}
+
+	public byte[] firstKey() {
+		return data.firstKey();
+	}
+
+	public byte[] get(byte[] k) {
+		return data.get(k);
+	}
+
+	public Block getBlock() {
+		return b;
 	}
 
 	public Pair<byte[], byte[]> getFirstIntersect(byte[] from,
@@ -125,7 +103,29 @@ public class MemtableInMemory {
 		return Pair.create(sm.firstKey(), sm.get(sm.firstKey()));
 	}
 
-	public byte[] get(byte[] k) {
-		return data.get(k);
+	public synchronized void insertOrdered(byte[] k, byte[] val) {
+		data.put(k, val);
+		size += k.length + val.length + 4 + 4;
+	}
+
+	public byte[] lastKey() {
+		return data.lastKey();
+	}
+
+	public String print() {
+		StringBuilder builder = new StringBuilder();
+		Set<byte[]> es = data.keySet();
+		for (byte[] k : es) {
+			builder.append(format.print(k));
+		}
+		return builder.toString();
+	}
+
+	public void setBlock(Block b) {
+		this.b = b;
+	}
+
+	public int size() {
+		return size;
 	}
 }

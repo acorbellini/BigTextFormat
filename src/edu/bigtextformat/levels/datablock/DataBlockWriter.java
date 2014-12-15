@@ -7,8 +7,10 @@ public class DataBlockWriter {
 	ByteArrayList values = new ByteArrayList();
 	private int size = 0;
 
-	public int size() {
-		return size; //for each list size (2 32-bit integers)
+	public synchronized void add(byte[] k, byte[] val) {
+		keys.add(k);
+		values.add(val);
+		size += k.length + val.length + 4 + 4;
 	}
 
 	public void clear() {
@@ -23,10 +25,8 @@ public class DataBlockWriter {
 				.toArray());
 	}
 
-	public synchronized void add(byte[] k, byte[] val) {
-		keys.add(k);
-		values.add(val);
-		size += k.length + val.length + 4 + 4;
+	public int size() {
+		return size; //for each list size (2 32-bit integers)
 	}
 
 }

@@ -39,14 +39,9 @@ public class CompactWriter {
 		this.exec = execShared2;
 	}
 
-	public void setTrottle(int rate) {
-		this.trottle = true;
-		this.rate = rate;
-	}
-
-	public void addDataBlock(DataBlock dataBlock) throws Exception {
-		flushCurrent();
-		add(dataBlock);
+	public void add(byte[] k, byte[] v) throws Exception {
+		check();
+		current.add(k, v);
 	}
 
 	private void add(DataBlock dataBlock) throws Exception {
@@ -69,6 +64,24 @@ public class CompactWriter {
 						.getLevel(level.level() + 1)
 						.intersectSize(minKey, maxKey) >= level.getOpts().intersectSplit)) {
 			flushDBS();
+		}
+	}
+
+	public void addDataBlock(DataBlock dataBlock) throws Exception {
+		flushCurrent();
+		add(dataBlock);
+	}
+
+	private void check() throws Exception {
+		if (current != null && current.size() >= level.getOpts().maxBlockSize) {
+			flushCurrent();
+		}
+	}
+
+	private void flushCurrent() throws Exception {
+		if (current.size() > 0) {
+			add(current.getDB());
+			current.clear();
 		}
 	}
 
@@ -146,13 +159,6 @@ public class CompactWriter {
 		});
 	}
 
-	private void flushCurrent() throws Exception {
-		if (current.size() > 0) {
-			add(current.getDB());
-			current.clear();
-		}
-	}
-
 	public void persist() throws Exception {
 		flushCurrent();
 		flushDBS();
@@ -164,14 +170,8 @@ public class CompactWriter {
 
 	}
 
-	public void add(byte[] k, byte[] v) throws Exception {
-		check();
-		current.add(k, v);
-	}
-
-	private void check() throws Exception {
-		if (current != null && current.size() >= level.getOpts().maxBlockSize) {
-			flushCurrent();
-		}
+	public void setTrottle(int rate) {
+		this.trottle = true;
+		this.rate = rate;
 	}
 }

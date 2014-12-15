@@ -17,6 +17,31 @@ import edu.bigtextformat.record.RecordFormat;
 import edu.jlime.util.DataTypeUtils;
 
 public class IndexTest {
+	private static void check(final BplusIndex i) throws Exception {
+		int cont = 0;
+		for (IndexData data : i) {
+			for (byte[] b : data.getKeys()) {
+				if (DataTypeUtils.byteArrayToInt(b) != cont++) {
+					throw new Exception("Not ok: failed on " + cont);
+				}
+			}
+		}
+	}
+
+	private static void check2(final BplusIndex i) throws Exception {
+		int cont = 0;
+		int max = -1;
+		for (IndexData data : i) {
+			for (byte[] b : data.getKeys()) {
+				int curr = DataTypeUtils.byteArrayToInt(b);
+				if (curr < max) {
+					throw new Exception("Not ok on element " + curr);
+				} else
+					max = curr;
+			}
+		}
+	}
+
 	public static void main(String[] args) throws Exception {
 		final RecordFormat format = RecordFormat.create(new String[] { "k",
 				"k2" }, new FormatType<?>[] { FormatTypes.LONG.getType(),
@@ -98,31 +123,6 @@ public class IndexTest {
 			i.close();
 		}
 
-	}
-
-	private static void check2(final BplusIndex i) throws Exception {
-		int cont = 0;
-		int max = -1;
-		for (IndexData data : i) {
-			for (byte[] b : data.getKeys()) {
-				int curr = DataTypeUtils.byteArrayToInt(b);
-				if (curr < max) {
-					throw new Exception("Not ok on element " + curr);
-				} else
-					max = curr;
-			}
-		}
-	}
-
-	private static void check(final BplusIndex i) throws Exception {
-		int cont = 0;
-		for (IndexData data : i) {
-			for (byte[] b : data.getKeys()) {
-				if (DataTypeUtils.byteArrayToInt(b) != cont++) {
-					throw new Exception("Not ok: failed on " + cont);
-				}
-			}
-		}
 	}
 
 	private static void put(BplusIndex i, RecordFormat format, String k,

@@ -18,14 +18,6 @@ public class Operation implements DataType<Operation> {
 		this.v = v;
 	}
 
-	public byte[] toByteArray() {
-		ByteBuffer buff = new ByteBuffer();
-		buff.put(op.getId());
-		buff.putByteArray(k);
-		buff.putByteArray(v);
-		return buff.build();
-	}
-
 	@Override
 	public Operation fromByteArray(byte[] data) throws Exception {
 		ByteBuffer buff = new ByteBuffer(data);
@@ -33,6 +25,14 @@ public class Operation implements DataType<Operation> {
 		this.k = buff.getByteArray();
 		this.v = buff.getByteArray();
 		return this;
+	}
+
+	public byte[] toByteArray() {
+		ByteBuffer buff = new ByteBuffer();
+		buff.put(op.getId());
+		buff.putByteArray(k);
+		buff.putByteArray(v);
+		return buff.build();
 	}
 
 }

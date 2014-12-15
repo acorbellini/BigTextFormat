@@ -71,54 +71,17 @@ public class Manifest {
 
 	}
 
-	private BlockFile createLog(String path) throws Exception {
-		return BlockFile.create(
-				path,
-				new BlockFileOptions().setMagic(MAGIC).setEnableCache(false)
-						.setAppendOnly(true)
-						.setComp(CompressionType.SNAPPY.getComp()));
-	}
+	private void addAll(Map<String, LevelFile> files, final BlockFile current) {
 
-	public HashMap<String, LevelFile> readFiles() throws IOException, Exception {
-		HashMap<String, LevelFile> files = new HashMap<String, LevelFile>(
-				200000);
-
-		inFile.clear();
-
-		HashSet<String> inDir = new HashSet<String>();
-		for (String string : fDir.list()) {
-			inDir.add(string);
-		}
-
-		readMode();
-
-		for (Block block : log) {
-			ByteBuffer buff = new ByteBuffer(block.payload());
-			int level = buff.getInt();
-			int cont = buff.getInt();
-			String levelFileName = buff.getString();
-			byte[] minKey = buff.getByteArray();
-			byte[] maxKey = buff.getByteArray();
-
-			// if (Files.exists(Paths.get(fDir.getPath() + "/" +
-			// levelFileName))) {
-			if (inDir.contains(levelFileName)) {
-				if (!files.containsKey(levelFileName)) {
-					LevelFile open = LevelFile.open(level, cont, fDir.getPath()
-							+ "/" + levelFileName, minKey, maxKey);
-
-					files.put(levelFileName, open);
-					inFile.add(levelFileName);
-				} else {
-					// System.out.println("Was already there.");
-				}
-
+		for (final LevelFile lf : files.values()) {
+			try {
+				put(current, lf.getLevel(), lf.getCont(), lf.getName(),
+						lf.getMinKey(), lf.getMaxKey());
+			} catch (Exception e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
 			}
 		}
-
-		appendMode();
-
-		return files;
 	}
 
 	private void appendMode() throws Exception {
@@ -180,6 +143,10 @@ public class Manifest {
 		return ret;
 	}
 
+	public void close() throws IOException {
+		log.close();
+	}
+
 	public synchronized void compact(HashMap<String, LevelFile> files)
 			throws Exception, IOException {
 
@@ -210,26 +177,24 @@ public class Manifest {
 		appendMode();
 	}
 
-	private void readMode() throws IOException, Exception {
-		if (mode == READ)
-			return;
-		if (log != null)
-			log.close();
-		log = BlockFile.open(path, MAGIC);
-		mode = READ;
+	private BlockFile createLog(String path) throws Exception {
+		return BlockFile.create(
+				path,
+				new BlockFileOptions().setMagic(MAGIC).setEnableCache(false)
+						.setAppendOnly(true)
+						.setComp(CompressionType.SNAPPY.getComp()));
 	}
 
-	private void addAll(Map<String, LevelFile> files, final BlockFile current) {
+	public Collection<LevelFile> getFiles() throws IOException, Exception {
+		HashMap<String, LevelFile> files = readFiles();
 
-		for (final LevelFile lf : files.values()) {
-			try {
-				put(current, lf.getLevel(), lf.getCont(), lf.getName(),
-						lf.getMinKey(), lf.getMaxKey());
-			} catch (Exception e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
+		Map<String, LevelFile> checkOtherFiles = checkOtherFiles(files);
+		if (!checkOtherFiles.isEmpty()) {
+			files.putAll(checkOtherFiles);
+			compact(files);
 		}
+
+		return files.values();
 	}
 
 	public void put(BlockFile current, int level, int cont,
@@ -260,20 +225,55 @@ public class Manifest {
 		put(log, level, cont, levelFileName, minKey, maxKey);
 	}
 
-	public void close() throws IOException {
-		log.close();
-	}
+	public HashMap<String, LevelFile> readFiles() throws IOException, Exception {
+		HashMap<String, LevelFile> files = new HashMap<String, LevelFile>(
+				200000);
 
-	public Collection<LevelFile> getFiles() throws IOException, Exception {
-		HashMap<String, LevelFile> files = readFiles();
+		inFile.clear();
 
-		Map<String, LevelFile> checkOtherFiles = checkOtherFiles(files);
-		if (!checkOtherFiles.isEmpty()) {
-			files.putAll(checkOtherFiles);
-			compact(files);
+		HashSet<String> inDir = new HashSet<String>();
+		for (String string : fDir.list()) {
+			inDir.add(string);
 		}
 
-		return files.values();
+		readMode();
+
+		for (Block block : log) {
+			ByteBuffer buff = new ByteBuffer(block.payload());
+			int level = buff.getInt();
+			int cont = buff.getInt();
+			String levelFileName = buff.getString();
+			byte[] minKey = buff.getByteArray();
+			byte[] maxKey = buff.getByteArray();
+
+			// if (Files.exists(Paths.get(fDir.getPath() + "/" +
+			// levelFileName))) {
+			if (inDir.contains(levelFileName)) {
+				if (!files.containsKey(levelFileName)) {
+					LevelFile open = LevelFile.open(level, cont, fDir.getPath()
+							+ "/" + levelFileName, minKey, maxKey);
+
+					files.put(levelFileName, open);
+					inFile.add(levelFileName);
+				} else {
+					// System.out.println("Was already there.");
+				}
+
+			}
+		}
+
+		appendMode();
+
+		return files;
+	}
+
+	private void readMode() throws IOException, Exception {
+		if (mode == READ)
+			return;
+		if (log != null)
+			log.close();
+		log = BlockFile.open(path, MAGIC);
+		mode = READ;
 	}
 
 }

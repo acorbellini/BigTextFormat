@@ -14,8 +14,8 @@ public class DateType implements FormatType<Date> {
 	}
 
 	@Override
-	public int size(int offset, byte[] d) {
-		return 8;
+	public Date get(byte[] k) {
+		return new Date(new ByteBuffer(k).getLong());
 	}
 
 	@Override
@@ -24,8 +24,13 @@ public class DateType implements FormatType<Date> {
 	}
 
 	@Override
-	public Date get(byte[] k) {
-		return new Date(new ByteBuffer(k).getLong());
+	public FormatTypes getType() {
+		return FormatTypes.DATE;
+	}
+
+	@Override
+	public int size(int offset, byte[] d) {
+		return 8;
 	}
 
 	@Override
@@ -34,11 +39,6 @@ public class DateType implements FormatType<Date> {
 		ByteBuffer buff = new ByteBuffer();
 		buff.putLong(d.getTime());
 		return buff.build();
-	}
-
-	@Override
-	public FormatTypes getType() {
-		return FormatTypes.DATE;
 	}
 
 }

@@ -11,11 +11,6 @@ class BlockFileIterator implements Iterator<Block> {
 	}
 
 	@Override
-	public Block next() {
-		return current;
-	}
-
-	@Override
 	public boolean hasNext() {
 		try {
 			// do {
@@ -32,6 +27,11 @@ class BlockFileIterator implements Iterator<Block> {
 			e.printStackTrace();
 			return false;
 		}
+	}
+
+	@Override
+	public Block next() {
+		return current;
 	}
 
 	@Override

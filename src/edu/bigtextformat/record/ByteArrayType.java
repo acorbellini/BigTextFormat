@@ -21,9 +21,8 @@ public class ByteArrayType implements FormatType<byte[]> {
 	}
 
 	@Override
-	public int size(int offset, byte[] d) {
-		ByteBuffer buff = new ByteBuffer(d, offset);
-		return 4 + buff.getInt();
+	public byte[] get(byte[] k) {
+		return k;
 	}
 
 	@Override
@@ -33,8 +32,14 @@ public class ByteArrayType implements FormatType<byte[]> {
 	}
 
 	@Override
-	public byte[] get(byte[] k) {
-		return k;
+	public FormatTypes getType() {
+		return FormatTypes.BYTEARRAY;
+	}
+
+	@Override
+	public int size(int offset, byte[] d) {
+		ByteBuffer buff = new ByteBuffer(d, offset);
+		return 4 + buff.getInt();
 	}
 
 	@Override
@@ -43,11 +48,6 @@ public class ByteArrayType implements FormatType<byte[]> {
 		ByteBuffer buff = new ByteBuffer();
 		buff.putByteArray(el);
 		return buff.build();
-	}
-
-	@Override
-	public FormatTypes getType() {
-		return FormatTypes.BYTEARRAY;
 	}
 
 }

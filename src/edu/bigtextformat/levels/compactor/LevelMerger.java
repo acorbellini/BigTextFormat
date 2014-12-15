@@ -20,46 +20,34 @@ import edu.bigtextformat.levels.levelfile.LevelFileReader;
 
 public class LevelMerger {
 
-	private static final int RATE = (int) ((512 * 1024) / 1000); // 1MB
-																	// per
-																	// sec
-
-	public static void shrink(Level level, Set<LevelFile> level0Merge,
-			ExecutorService execCR) throws Exception {
-		List<PairReader> readers = new ArrayList<>();
-		for (LevelFile levelFile : level0Merge) {
-			try {
-				PairReader pairReader;
-				pairReader = levelFile.getPairReader();
-				readers.add(pairReader);
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
+	public static PairReader getNext(List<PairReader> readers,
+			BlockFormat format, byte[] before) {
+		PairReader min = null;
+		Iterator<PairReader> it = readers.iterator();
+		while (it.hasNext()) {
+			PairReader pairReader = (PairReader) it.next();
+			while (pairReader.hasNext()
+					&& (before != null && format.compare(before,
+							pairReader.getKey()) >= 0))
+				pairReader.advance();
+			if (pairReader.hasNext()) {
+				if (min == null)
+					min = pairReader;
+				else {
+					int compare = format.compare(min.getKey(),
+							pairReader.getKey());
+					if (compare == 0
+							&& min.getReader().getFile().getCont() < pairReader
+									.getReader().getFile().getCont())
+						min = pairReader;
+					else if (compare > 0)
+						min = pairReader;
+				}
+			} else
+				it.remove();
 		}
 
-		try {
-			DataBlockWriter db = new DataBlockWriter();
-			CompactWriter writer = new CompactWriter(level, execCR);
-			PairReader min = getNext(readers, level.getOpts().format, null);
-			while (min != null && min.getKey() != null) {
-				byte[] key = min.getKey();
-				db.add(key, min.getValue());
-				min.advance();
-				min = getNext(readers, level.getOpts().format, key);
-			}
-			DataBlockIterator it = db.getDB().iterator();
-			while (it.hasNext()) {
-				writer.add(it.getKey(), it.getVal());
-				it.advance();
-			}
-			writer.persist();
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-
-		for (LevelFile levelFile : level0Merge) {
-			level.delete(levelFile);
-		}
+		return min;
 	}
 
 	public static void merge(Set<LevelFile> list, final Level current,
@@ -174,6 +162,44 @@ public class LevelMerger {
 		}
 	}
 
+	public static void shrink(Level level, Set<LevelFile> level0Merge,
+			ExecutorService execCR) throws Exception {
+		List<PairReader> readers = new ArrayList<>();
+		for (LevelFile levelFile : level0Merge) {
+			try {
+				PairReader pairReader;
+				pairReader = levelFile.getPairReader();
+				readers.add(pairReader);
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		}
+
+		try {
+			DataBlockWriter db = new DataBlockWriter();
+			CompactWriter writer = new CompactWriter(level, execCR);
+			PairReader min = getNext(readers, level.getOpts().format, null);
+			while (min != null && min.getKey() != null) {
+				byte[] key = min.getKey();
+				db.add(key, min.getValue());
+				min.advance();
+				min = getNext(readers, level.getOpts().format, key);
+			}
+			DataBlockIterator it = db.getDB().iterator();
+			while (it.hasNext()) {
+				writer.add(it.getKey(), it.getVal());
+				it.advance();
+			}
+			writer.persist();
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+
+		for (LevelFile levelFile : level0Merge) {
+			level.delete(levelFile);
+		}
+	}
+
 	public static void sortByKey(List<LevelFile> intersectSorted,
 			final BlockFormat format) {
 		Collections.sort(intersectSorted, new Comparator<LevelFile>() {
@@ -190,33 +216,7 @@ public class LevelMerger {
 		});
 	}
 
-	public static PairReader getNext(List<PairReader> readers,
-			BlockFormat format, byte[] before) {
-		PairReader min = null;
-		Iterator<PairReader> it = readers.iterator();
-		while (it.hasNext()) {
-			PairReader pairReader = (PairReader) it.next();
-			while (pairReader.hasNext()
-					&& (before != null && format.compare(before,
-							pairReader.getKey()) >= 0))
-				pairReader.advance();
-			if (pairReader.hasNext()) {
-				if (min == null)
-					min = pairReader;
-				else {
-					int compare = format.compare(min.getKey(),
-							pairReader.getKey());
-					if (compare == 0
-							&& min.getReader().getFile().getCont() < pairReader
-									.getReader().getFile().getCont())
-						min = pairReader;
-					else if (compare > 0)
-						min = pairReader;
-				}
-			} else
-				it.remove();
-		}
-
-		return min;
-	}
+	private static final int RATE = (int) ((512 * 1024) / 1000); // 1MB
+																	// per
+																	// sec
 }

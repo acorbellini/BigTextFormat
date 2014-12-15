@@ -10,21 +10,12 @@ import edu.bigtextformat.levels.levelfile.LevelFile;
 public class Levels implements Iterable<Level> {
 	Map<Integer, Level> levels = new ConcurrentHashMap<>();
 
-	@Override
-	public Iterator<Level> iterator() {
-		return levels.values().iterator();
-	}
-
 	public void clear() {
 		levels.clear();
 	}
 
 	public Level get(int level) {
 		return levels.get(level);
-	}
-
-	public void put(int level, Level list) {
-		levels.put(level, list);
 	}
 
 	public HashMap<String, LevelFile> getMap() {
@@ -35,5 +26,14 @@ public class Levels implements Iterable<Level> {
 			}
 		}
 		return ret;
+	}
+
+	@Override
+	public Iterator<Level> iterator() {
+		return levels.values().iterator();
+	}
+
+	public void put(int level, Level list) {
+		levels.put(level, list);
 	}
 }

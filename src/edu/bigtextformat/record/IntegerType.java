@@ -12,8 +12,8 @@ public class IntegerType implements FormatType<Integer> {
 	}
 
 	@Override
-	public int size(int offset, byte[] d) {
-		return 4;
+	public Integer get(byte[] k) {
+		return new ByteBuffer(k).getInt();
 	}
 
 	@Override
@@ -22,8 +22,13 @@ public class IntegerType implements FormatType<Integer> {
 	}
 
 	@Override
-	public Integer get(byte[] k) {
-		return new ByteBuffer(k).getInt();
+	public FormatTypes getType() {
+		return FormatTypes.INTEGER;
+	}
+
+	@Override
+	public int size(int offset, byte[] d) {
+		return 4;
 	}
 
 	@Override
@@ -32,11 +37,6 @@ public class IntegerType implements FormatType<Integer> {
 		ByteBuffer b = new ByteBuffer(4);
 		b.putInt(i);
 		return b.build();
-	}
-
-	@Override
-	public FormatTypes getType() {
-		return FormatTypes.INTEGER;
 	}
 
 }

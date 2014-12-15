@@ -27,6 +27,10 @@ public class LogFile implements Iterable<byte[]> {
 		this.name = filename.getName();
 	}
 
+	public void append(byte[] opAsBytes) throws Exception {
+		file.newFixedBlock(opAsBytes);
+	}
+
 	public void appendMode() throws Exception {
 		if (mode == APPEND)
 			return;
@@ -36,6 +40,12 @@ public class LogFile implements Iterable<byte[]> {
 		mode = APPEND;
 	}
 
+	public void close() throws IOException {
+		if (file != null)
+			file.close();
+		file = null;
+	}
+
 	private BlockFile createLog(String path) throws Exception {
 		return BlockFile.create(path, new BlockFileOptions().setMagic(MAGIC)
 				.setEnableCache(false).setAppendOnly(true)
@@ -43,18 +53,15 @@ public class LogFile implements Iterable<byte[]> {
 				);
 	}
 
-	public void append(byte[] opAsBytes) throws Exception {
-		file.newFixedBlock(opAsBytes);
-	}
-
-	public String getName() {
-		return name;
-	}
-
-	public void close() throws IOException {
+	public synchronized void delete() throws IOException {
 		if (file != null)
-			file.close();
-		file = null;
+			file.delete();
+		else
+			Files.delete(Paths.get(p));
+	}
+
+	public void flush() throws IOException {
+		file.flush();
 	}
 
 	public byte[] get(byte[] k) throws Exception {
@@ -62,12 +69,12 @@ public class LogFile implements Iterable<byte[]> {
 		return null;
 	}
 
-	synchronized void readMode() throws Exception {
-		if (mode == READ)
-			return;
-		close();
-		file = BlockFile.open(p, MAGIC);
-		mode = READ;
+	public String getName() {
+		return name;
+	}
+
+	public boolean isEmpty() throws Exception {
+		return file.isEmpty();
 	}
 
 	@Override
@@ -103,22 +110,15 @@ public class LogFile implements Iterable<byte[]> {
 
 	}
 
+	synchronized void readMode() throws Exception {
+		if (mode == READ)
+			return;
+		close();
+		file = BlockFile.open(p, MAGIC);
+		mode = READ;
+	}
+
 	public long size() throws Exception {
 		return file.size();
-	}
-
-	public synchronized void delete() throws IOException {
-		if (file != null)
-			file.delete();
-		else
-			Files.delete(Paths.get(p));
-	}
-
-	public boolean isEmpty() throws Exception {
-		return file.isEmpty();
-	}
-
-	public void flush() throws IOException {
-		file.flush();
 	}
 }

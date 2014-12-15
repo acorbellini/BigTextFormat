@@ -28,16 +28,6 @@ final class LogFileWriter {
 		sem = new Semaphore(sortedFile.getOpts().maxWriterThreads);
 	}
 
-	public void start() {
-		Thread t = new Thread("Level0 Writer") {
-			public void run() {
-				exec();
-			};
-		};
-		t.setDaemon(true);
-		t.start();
-	}
-
 	public void exec() {
 		while (!stop) {
 			try {
@@ -82,6 +72,16 @@ final class LogFileWriter {
 	public synchronized void setChanged() {
 		this.changed = true;
 		notify();
+	}
+
+	public void start() {
+		Thread t = new Thread("Level0 Writer") {
+			public void run() {
+				exec();
+			};
+		};
+		t.setDaemon(true);
+		t.start();
 	}
 
 	public synchronized void waitFinished() {

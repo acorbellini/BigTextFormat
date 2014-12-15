@@ -17,9 +17,14 @@ import java.util.Random;
 
 public class LevelTest {
 
-	private static final boolean LOAD = true;
-	private static final boolean JUST_OPEN = false;
-
+	static void delete(File f) throws IOException {
+		if (f.isDirectory()) {
+			for (File c : f.listFiles())
+				delete(c);
+		}
+		if (!f.isDirectory() && !f.delete())
+			throw new FileNotFoundException("Failed to delete file: " + f);
+	}
 	public static void main(String[] args) throws Exception {
 		String PATH = args[0];
 		Integer SIZE = Integer.valueOf(args[1]);
@@ -132,12 +137,7 @@ public class LevelTest {
 
 	}
 
-	static void delete(File f) throws IOException {
-		if (f.isDirectory()) {
-			for (File c : f.listFiles())
-				delete(c);
-		}
-		if (!f.isDirectory() && !f.delete())
-			throw new FileNotFoundException("Failed to delete file: " + f);
-	}
+	private static final boolean LOAD = true;
+
+	private static final boolean JUST_OPEN = false;
 }

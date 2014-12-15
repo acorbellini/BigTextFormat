@@ -48,6 +48,45 @@ public class RawFileChannel extends RawFile {
 	}
 
 	@Override
+	public void close() throws IOException {
+		// System.out.println("Closed file " + getPath());
+		if (!f.isOpen())
+			return;
+		sync();
+		f.close();
+
+	}
+
+	@Override
+	public synchronized void copy(RawFile orig, long from, long len, long pos)
+			throws IOException {
+		FileChannel fc = ((RawFileChannel) orig).f;
+		f.position(pos);
+		try {
+			fc.transferTo(from, len, f);
+		} catch (Exception e) {
+			System.out.println("Error transfering from " + orig.getPath()
+					+ " to " + p);
+			e.printStackTrace();
+		}
+	}
+
+	@Override
+	public void delete() throws IOException {
+		close();
+		Files.delete(p);
+	}
+
+	@Override
+	public File getFile() {
+		return p.toFile();
+	}
+
+	public String getPath() {
+		return p.toString();
+	}
+
+	@Override
 	public long length() throws FileChannelException {
 		try {
 			return f.size();
@@ -55,6 +94,30 @@ public class RawFileChannel extends RawFile {
 			throw new FileChannelException(this, e);
 		}
 		// return f.length();
+	}
+
+	@Override
+	public MappedByteBuffer memMap(long pos, long nextBlockPos)
+			throws IOException {
+		return f.map(MapMode.READ_WRITE, pos, nextBlockPos - pos);
+	}
+
+	@Override
+	public void read(long pos, byte[] data) throws Exception {
+		read(pos, data, 0, data.length);
+	}
+
+	@Override
+	public void read(long pos, byte[] data, int offset, int size)
+			throws Exception {
+		ByteBuffer buff = ByteBuffer.wrap(data, offset, size);
+		f.read(buff, pos);
+		// f.read(data, offset, size);
+	}
+
+	@Override
+	public void sync() throws IOException {
+		f.force(false);
 	}
 
 	@Override
@@ -78,68 +141,5 @@ public class RawFileChannel extends RawFile {
 	public void writeByte(long l, byte b) throws Exception {
 		f.write(ByteBuffer.wrap(new byte[] { b }), l);
 		// write(l, new byte[] { b });
-	}
-
-	@Override
-	public void read(long pos, byte[] data, int offset, int size)
-			throws Exception {
-		ByteBuffer buff = ByteBuffer.wrap(data, offset, size);
-		f.read(buff, pos);
-		// f.read(data, offset, size);
-	}
-
-	@Override
-	public void close() throws IOException {
-		// System.out.println("Closed file " + getPath());
-		if (!f.isOpen())
-			return;
-		sync();
-		f.close();
-
-	}
-
-	@Override
-	public void sync() throws IOException {
-		f.force(false);
-	}
-
-	@Override
-	public void read(long pos, byte[] data) throws Exception {
-		read(pos, data, 0, data.length);
-	}
-
-	@Override
-	public MappedByteBuffer memMap(long pos, long nextBlockPos)
-			throws IOException {
-		return f.map(MapMode.READ_WRITE, pos, nextBlockPos - pos);
-	}
-
-	@Override
-	public File getFile() {
-		return p.toFile();
-	}
-
-	@Override
-	public void delete() throws IOException {
-		close();
-		Files.delete(p);
-	}
-
-	@Override
-	public synchronized void copy(RawFile orig, long from, long len, long pos)
-			throws IOException {
-		FileChannel fc = ((RawFileChannel) orig).f;
-		f.position(pos);
-		try {
-			fc.transferTo(from, len, f);
-		} catch (Exception e) {
-			System.out.println("Error transfering from " + orig.getPath()
-					+ " to " + p);
-			e.printStackTrace();
-		}
-	}
-
-	public String getPath() {
-		return p.toString();
 	}
 }
