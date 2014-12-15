@@ -3,10 +3,10 @@ package edu.bigtextformat.levels.levelfile;
 import java.util.ArrayList;
 import java.util.List;
 
-import edu.bigtextformat.levels.DataBlock;
-import edu.bigtextformat.levels.DataBlockImpl;
-import edu.bigtextformat.levels.DataBlockWriter;
 import edu.bigtextformat.levels.LevelOptions;
+import edu.bigtextformat.levels.datablock.DataBlock;
+import edu.bigtextformat.levels.datablock.DataBlockImpl;
+import edu.bigtextformat.levels.datablock.DataBlockWriter;
 
 public class LevelFileWriter {
 	DataBlockWriter curr;

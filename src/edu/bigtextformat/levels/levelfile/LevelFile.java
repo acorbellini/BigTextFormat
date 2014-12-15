@@ -9,6 +9,7 @@ import java.util.Timer;
 import java.util.TimerTask;
 import java.util.UUID;
 import java.util.concurrent.Callable;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -20,13 +21,13 @@ import edu.bigtextformat.block.Block;
 import edu.bigtextformat.block.BlockFile;
 import edu.bigtextformat.block.BlockFileOptions;
 import edu.bigtextformat.block.BlockFormat;
-import edu.bigtextformat.levels.DataBlock;
-import edu.bigtextformat.levels.DataBlockImpl;
-import edu.bigtextformat.levels.Index;
 import edu.bigtextformat.levels.LevelOptions;
-import edu.bigtextformat.levels.Pair;
 import edu.bigtextformat.levels.PairReader;
 import edu.bigtextformat.levels.SortedLevelFile;
+import edu.bigtextformat.levels.datablock.DataBlock;
+import edu.bigtextformat.levels.datablock.DataBlockImpl;
+import edu.bigtextformat.levels.index.Index;
+import edu.bigtextformat.util.Pair;
 import edu.jlime.util.DataTypeUtils;
 
 public class LevelFile {
@@ -43,10 +44,9 @@ public class LevelFile {
 
 	private static final long TIME_TO_CLOSE = 5000;
 
-	private static Cache<DataBlockID, DataBlock> defaultCache = CacheBuilder
-			.newBuilder().maximumSize(MAX_CACHE_SIZE).weakValues().build();
-
-	private Cache<DataBlockID, DataBlock> cache = defaultCache;
+	private Cache<DataBlockID, DataBlock> cache = CacheBuilder.newBuilder()
+			.maximumSize(MAX_CACHE_SIZE)
+			.expireAfterAccess(1000, TimeUnit.SECONDS).softValues().build();
 
 	private volatile LevelFileStatus state = LevelFileStatus.PERSISTED;
 
@@ -90,10 +90,6 @@ public class LevelFile {
 		this.maxKey = maxKey;
 		this.rl = closeLock.readLock();
 		this.wl = closeLock.writeLock();
-	}
-
-	public void setCache(Cache<DataBlockID, DataBlock> cache) {
-		this.cache = cache;
 	}
 
 	public String getName() {

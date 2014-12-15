@@ -12,6 +12,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import edu.bigtextformat.block.BlockFormat;
 import edu.bigtextformat.levels.levelfile.LevelFile;
+import edu.bigtextformat.util.Pair;
 
 public class Level implements Iterable<LevelFile> {
 

@@ -13,12 +13,12 @@ public class CompactorWorker implements Runnable {
 
 	private SortedLevelFile file;
 	private int level;
-	private CompactorV2 compactor;
+	private Compactor compactor;
 	ExecutorService exec;
 
 	Set<LevelFile> from = new HashSet<>();
 
-	public CompactorWorker(CompactorV2 compactor, SortedLevelFile file,
+	public CompactorWorker(Compactor compactor, SortedLevelFile file,
 			int level, ExecutorService exec) {
 		this.file = file;
 		this.level = level;

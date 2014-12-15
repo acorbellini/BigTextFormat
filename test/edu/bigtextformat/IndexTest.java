@@ -27,9 +27,9 @@ public class IndexTest {
 		ExecutorService exec = Executors.newFixedThreadPool(100);
 		final Semaphore sem = new Semaphore(120);
 		final BplusIndex i = new BplusIndex(
-				"C:/Users/Ale/Desktop/indextest.bplus", format, true, true);
+				args[0], format, true, true);
 		List<Long> random = new ArrayList<>();
-		for (long j = 0; j < 500; j++) {
+		for (long j = 0; j < 50000; j++) {
 			random.add(j);
 		}
 		// Scanner scan = new Scanner(new File("input.txt"));

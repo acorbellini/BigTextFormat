@@ -1,5 +1,6 @@
 package edu.bigtextformat.levels;
 
+import edu.bigtextformat.levels.datablock.DataBlockIterator;
 import edu.bigtextformat.levels.levelfile.LevelFile;
 import edu.bigtextformat.levels.levelfile.LevelFileReader;
 

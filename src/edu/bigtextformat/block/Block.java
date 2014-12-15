@@ -3,8 +3,6 @@ package edu.bigtextformat.block;
 import java.util.zip.CRC32;
 import java.util.zip.Checksum;
 
-import javax.management.MXBean;
-
 import edu.bigtextformat.raw.RawFile;
 import edu.bigtextformat.record.DataType;
 import edu.jlime.util.ByteBuffer;

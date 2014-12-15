@@ -1,9 +1,9 @@
 package edu.bigtextformat.levels.levelfile;
 
 import edu.bigtextformat.block.BlockFormat;
-import edu.bigtextformat.levels.DataBlock;
-import edu.bigtextformat.levels.DataBlockIterator;
-import edu.bigtextformat.levels.Pair;
+import edu.bigtextformat.levels.datablock.DataBlock;
+import edu.bigtextformat.levels.datablock.DataBlockIterator;
+import edu.bigtextformat.util.Pair;
 
 public class DataBlockReference implements DataBlock {
 

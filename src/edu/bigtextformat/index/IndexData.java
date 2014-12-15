@@ -184,6 +184,7 @@ public class IndexData implements DataType<IndexData> {
 		ByteBuffer lists = new ByteBuffer();
 		lists.putByteArrayList(keys);
 		lists.putByteArrayList(values);
+		
 		byte[] listsAsBytes = lists.build();
 		if (this.compressed)
 			listsAsBytes = comp.compress(lists.build());

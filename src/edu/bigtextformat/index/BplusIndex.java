@@ -3,6 +3,7 @@ package edu.bigtextformat.index;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.concurrent.Callable;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock.ReadLock;
@@ -14,6 +15,7 @@ import com.google.common.cache.CacheBuilder;
 import edu.bigtextformat.Range;
 import edu.bigtextformat.block.Block;
 import edu.bigtextformat.block.BlockFile;
+import edu.bigtextformat.block.BlockFileOptions;
 import edu.bigtextformat.block.BlockFormat;
 import edu.bigtextformat.block.BlockPosChangeListener;
 import edu.bigtextformat.header.Header;
@@ -48,13 +50,15 @@ public class BplusIndex implements Index, Iterable<IndexData>,
 
 	private BlockFormat format;
 
-	Cache<Block, IndexData> indexDatas = CacheBuilder.newBuilder().weakValues()
-			.<Block, IndexData> build();
+	Cache<Long, IndexData> indexDatas = CacheBuilder.newBuilder().weakValues()
+			.<Long, IndexData> build();
 
 	public BplusIndex(String string, BlockFormat format, boolean trunc,
 			boolean write) throws Exception {
 		this.format = format;
-		this.file = BlockFile.open(string, magic);
+		this.file = BlockFile.create(string,
+				new BlockFileOptions().setMagic(magic).setTrunc(trunc)
+						.setReadOnly(!write));
 		this.file.addPosListener(this);
 		this.h = file.getHeader();
 		byte[] rootAddrAsBytes = h.get("root");
@@ -74,7 +78,7 @@ public class BplusIndex implements Index, Iterable<IndexData>,
 	private IndexData createIndexData(Block b, long parent, int level)
 			throws Exception {
 		return IndexData.create(this, b, parent, level, true,
-				CompressionType.BZIP.getComp());
+				CompressionType.SNAPPY.getComp());
 	}
 
 	// Index deleted; -> Tal vez no sea necesario, si es que el indice no es muy
@@ -150,7 +154,6 @@ public class BplusIndex implements Index, Iterable<IndexData>,
 			lastSplitted++;
 			IndexData parent = null;
 			IndexData split = data.split();
-			indexDatas.put(split.getBlock(), split);
 			byte[] sendItUp = split.last();
 			if (data.getParent() == -1) {
 				Block b = file.newEmptyBlock();
@@ -165,6 +168,8 @@ public class BplusIndex implements Index, Iterable<IndexData>,
 			split.setNext(data.getBlock().getPos());
 			split.setPrev(data.getPrev());
 			split.persist(); // final persist
+
+			indexDatas.put(split.getBlock().getPos(), split);
 
 			IndexData prev = null;
 			if (data.getPrev() != -1) {
@@ -208,26 +213,24 @@ public class BplusIndex implements Index, Iterable<IndexData>,
 				DataTypeUtils.longToByteArray(root.getBlock().getPos()));
 
 		synchronized (indexDatas) {
-			indexDatas.put(b, root);
+			indexDatas.put(b.getPos(), root);
 		}
 	}
 
-	IndexData getIndexData(long pos) throws Exception {
+	IndexData getIndexData(final long pos) throws Exception {
 		if (root != null && root.getBlock().getPos() == pos)
 			return root;
 
-		Block block = file.getBlock(pos, false);
-		IndexData data = indexDatas.getIfPresent(block);
-		if (data == null) {
-			synchronized (indexDatas) {
-				data = indexDatas.getIfPresent(block);
-				if (data == null) {
-					data = IndexData.read(this, block);
-					indexDatas.put(block, data);
-				}
+		// Block block = file.getBlock(pos, false);
+		return indexDatas.get(pos, new Callable<IndexData>() {
+
+			@Override
+			public IndexData call() throws Exception {
+				return IndexData.read(BplusIndex.this,
+						file.getBlock(pos, false));
+
 			}
-		}
-		return data;
+		});
 	}
 
 	private IndexData findBlock(byte[] key) throws Exception {
