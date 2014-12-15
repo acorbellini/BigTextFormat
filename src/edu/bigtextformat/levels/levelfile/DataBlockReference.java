@@ -26,7 +26,7 @@ public class DataBlockReference implements DataBlock {
 	public DataBlock getDB() {
 		if (db == null)
 			try {
-				db = file.getDataBlock(pos);
+				db = file.getDataBlock(pos, false);
 			} catch (Exception e) {
 				e.printStackTrace();
 			}

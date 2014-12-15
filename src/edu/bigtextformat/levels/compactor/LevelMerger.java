@@ -151,10 +151,10 @@ public class LevelMerger {
 		// + format.print(levelFile.getMaxKey()));
 		// }
 
-		ArrayList<LevelFileReader> readers = new ArrayList<>();
+		ArrayList<LevelFileReader> intersectionReaders = new ArrayList<>();
 		for (LevelFile levelFile : intersectSorted) {
 			try {
-				readers.add(levelFile.getReader());
+				intersectionReaders.add(levelFile.getReader());
 			} catch (Exception e) {
 				e.printStackTrace();
 			}
@@ -169,7 +169,7 @@ public class LevelMerger {
 		// System.out.println("First FROM key: "
 		// + format.print(fromReader.getKey()));
 
-		for (LevelFileReader levelFileReader : readers) {
+		for (LevelFileReader levelFileReader : intersectionReaders) {
 			// System.out.println("Current file " + levelFileReader.getFile());
 			while (levelFileReader.hasNext()) {
 				DataBlock dataBlock = levelFileReader.next();

@@ -254,31 +254,38 @@ public class LevelFile {
 		return new LevelFileReader(this);
 	}
 
-	public DataBlock getDataBlock(final long pos) throws Exception {
+	public DataBlock getDataBlock(final long pos, boolean saveInCache)
+			throws Exception {
+		if (!saveInCache)
+			return readDataBlock(pos);
 		DataBlock block = cache.get(DataBlockID.create(id, pos),
 				new Callable<DataBlock>() {
 
 					@Override
 					public DataBlock call() throws Exception {
-						rl.lock();
-						Block b;
-						long length;
-						try {
-							b = getFile().getBlock(pos, false);
-							length = getFile().length();
-						} finally {
-							rl.unlock();
-						}
-						if (b.getNextBlockPos() == length) // index
-															// position...
-							throw new Exception(
-									"Trying to read index position.");
-						DataBlock block = new DataBlockImpl(LevelFile.this, b
-								.getPos(), b.size()).fromByteArray(b.payload());
-						// cache.put(DataBlockID.create(id, b.getPos()), block);
-						return block;
+						return readDataBlock(pos);
 					}
+
 				});
+		return block;
+	}
+
+	private DataBlock readDataBlock(final long pos) throws Exception {
+		rl.lock();
+		Block b;
+		long length;
+		try {
+			b = getFile().getBlock(pos, false);
+			length = getFile().length();
+		} finally {
+			rl.unlock();
+		}
+		if (b.getNextBlockPos() == length) // index
+											// position...
+			throw new Exception("Trying to read index position.");
+		DataBlock block = new DataBlockImpl(LevelFile.this, b.getPos(),
+				b.size()).fromByteArray(b.payload());
+		// cache.put(DataBlockID.create(id, b.getPos()), block);
 		return block;
 	}
 
@@ -312,7 +319,7 @@ public class LevelFile {
 		long pos = getIndex().get(k);
 		if (pos < 0)
 			return false;
-		DataBlock db = getDataBlock(pos);
+		DataBlock db = getDataBlock(pos, true);
 		if (db.contains(k, format))
 			return true;
 		return false;
@@ -397,7 +404,7 @@ public class LevelFile {
 		Iterator<Long> it = getIndex().range(from, to, getOpts().format);
 		while (it.hasNext()) {
 			Long bPos = (Long) it.next();
-			DataBlock db = getDataBlock(bPos);
+			DataBlock db = getDataBlock(bPos, true);
 			Pair<byte[], byte[]> pair = db.getFirstBetween(from, inclFrom, to,
 					inclTo, getOpts().format);
 			if (pair != null)
@@ -442,7 +449,7 @@ public class LevelFile {
 		long pos = getIndex().get(k);
 		if (pos < 0)
 			return null;
-		DataBlock db = getDataBlock(pos);
+		DataBlock db = getDataBlock(pos, true);
 		return db.get(k, format);
 	}
 
