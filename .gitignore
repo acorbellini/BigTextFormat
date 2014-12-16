@@ -42,3 +42,9 @@ Network Trash Folder
 Temporary Items
 .apdisk
 /target/
+/bin/
+/.settings/
+/.classpath
+/.project
+/inpu2.txt
+/input.txt
