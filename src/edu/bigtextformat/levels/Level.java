@@ -25,7 +25,7 @@ public class Level implements Iterable<LevelFile> {
 		while (lo <= hi && !found) {
 			// Key is in a[lo..hi] or not present.
 			int mid = lo + (hi - lo) / 2;
-			int comp = format.compare(k, keys.get(mid).getMaxKey());
+			int comp = format.compare(k, keys.get(mid).getMinKey());
 			if (comp < 0) {
 				hi = mid - 1;
 				cont = lo;
@@ -71,7 +71,7 @@ public class Level implements Iterable<LevelFile> {
 				count.set(fl.getCont() + 1);
 
 			// if (level == 0)
-			int pos = search(fl.getMaxKey(), files, file.getOpts().format);
+			int pos = search(fl.getMinKey(), files, file.getOpts().format);
 			if (pos < 0)
 				pos = -(pos + 1);
 			files.add(pos, fl);
@@ -181,8 +181,14 @@ public class Level implements Iterable<LevelFile> {
 
 	}
 
-	public synchronized List<LevelFile> files() {
-		return new ArrayList<>(files);
+	public List<LevelFile> files() {
+		lock.readLock().lock();
+		try {
+			return new ArrayList<>(files);
+		} finally {
+			lock.readLock().unlock();
+		}
+
 	}
 
 	public byte[] get(byte[] k) {

@@ -48,7 +48,7 @@ public class LevelTest {
 				new FormatType<?>[] { FormatTypes.INTEGER.getType() },
 				new String[] { "k" });
 		LevelOptions opts = new LevelOptions().setFormat(format)
-				.setMaxMemTablesWriting(5).setMemTableSize(8 * 1024 * 1024)
+				.setSegmentWriters(5).setMemTableSize(8 * 1024 * 1024)
 				.setBaseSize(2 * 1024 * 1024).setMaxLevel0Files(4)
 				.setCompactLevel0Threshold(4).setMaxLevelFiles(10)
 				.setMaxBlockSize(512 * 1024)

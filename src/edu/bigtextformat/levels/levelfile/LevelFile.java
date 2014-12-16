@@ -81,9 +81,7 @@ public class LevelFile {
 
 	private static final long TIME_TO_CLOSE = 5000;
 
-	private Cache<DataBlockID, DataBlock> cache = CacheBuilder.newBuilder()
-			.maximumSize(MAX_CACHE_SIZE)
-			.expireAfterAccess(1000, TimeUnit.SECONDS).softValues().build();
+	private Cache<DataBlockID, DataBlock> cache = null;
 
 	private volatile LevelFileStatus state = LevelFileStatus.PERSISTED;
 
@@ -130,14 +128,29 @@ public class LevelFile {
 		this.wl = closeLock.writeLock();
 	}
 
+	private Cache<DataBlockID, DataBlock> getCache() {
+		if (cache == null) {
+			synchronized (this) {
+				if (cache == null) {
+					cache = CacheBuilder.newBuilder()
+							.maximumSize(MAX_CACHE_SIZE)
+							.expireAfterAccess(1000, TimeUnit.SECONDS)
+							.softValues().build();
+				}
+			}
+		}
+		return cache;
+	}
+
 	public synchronized void close() throws Exception {
-		cache.invalidateAll();
+		if (cache != null)
+			cache = null;
 		wl.lock();
 		try {
 			if (file != null)
 				file.close();
 			file = null;
-			index = null;			
+			index = null;
 			if (closeTask != null) {
 				closeTask.cancel();
 				closeTask = null;
@@ -225,7 +238,7 @@ public class LevelFile {
 			throws Exception {
 		if (!saveInCache)
 			return readDataBlock(pos);
-		DataBlock block = cache.get(DataBlockID.create(id, pos),
+		DataBlock block = getCache().get(DataBlockID.create(id, pos),
 				new Callable<DataBlock>() {
 
 					@Override
@@ -368,8 +381,7 @@ public class LevelFile {
 	}
 
 	public boolean intersectsWith(LevelFile other) throws Exception {
-		return opts.format.compare(getMinKey(), other.getMaxKey()) <= 0
-				&& getOpts().format.compare(getMaxKey(), other.getMinKey()) >= 0;
+		return intersectsWith(other.getMinKey(), other.getMaxKey());
 	}
 
 	public boolean isDeleted() {
@@ -526,10 +538,11 @@ public class LevelFile {
 	@Override
 	public String toString() {
 		try {
-			return "LevelFile [level=" + level + ", minKey=" + minKey + ","
-					+ minKey != null ? Arrays.toString(minKey) : "null"
-					+ " maxKey=" + maxKey != null ? Arrays.toString(maxKey)
-					: "null" + ", cont=" + cont + ", path=" + path + "]";
+			return "LevelFile [level=" + level + ", minKey="
+					+ (minKey != null ? Arrays.toString(minKey) : "null")
+					+ " maxKey="
+					+ (maxKey != null ? Arrays.toString(maxKey) : "null")
+					+ ", cont=" + cont + ", path=" + path + "]";
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
@@ -539,5 +552,11 @@ public class LevelFile {
 	public synchronized void unSetMerging() {
 		if (isMerging())
 			this.state = LevelFileStatus.PERSISTED;
+	}
+
+	public boolean intersectsWith(byte[] minKey2, byte[] maxKey2)
+			throws Exception {
+		return opts.format.compare(getMinKey(), maxKey2) <= 0
+				&& getOpts().format.compare(getMaxKey(), minKey2) >= 0;
 	}
 }

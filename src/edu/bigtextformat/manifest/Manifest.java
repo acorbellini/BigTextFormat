@@ -122,13 +122,15 @@ public class Manifest {
 						try {
 							LevelFile open = LevelFile.open(level, cont,
 									fDir.getPath() + "/" + name, null, null);
+							if (sorted.getOpts() != null)
+								open.setOpts(sorted.getOpts());
 							open.getMinKey();
 							open.getMaxKey();
 							ret.put(currentFile.getName(), open);
 						} catch (Exception e) {
 							e.printStackTrace();
 							ret.remove(currentFile.getName());
-							currentFile.delete();
+							// currentFile.delete();
 						}
 					}
 				}
@@ -252,7 +254,7 @@ public class Manifest {
 				if (!files.containsKey(levelFileName)) {
 					LevelFile open = LevelFile.open(level, cont, fDir.getPath()
 							+ "/" + levelFileName, minKey, maxKey);
-
+					open.setOpts(sorted.getOpts());
 					files.put(levelFileName, open);
 					inFile.add(levelFileName);
 				} else {

@@ -86,10 +86,10 @@ public class SortedLevelFile {
 
 			for (File path : memtables) {
 				try {
-					Memtable mem = Memtable.fromFile(path, opts.format);
+					Memtable mem = Memtable.fromFile(path, opts);
 					ret.scheduleMemtable(mem, ret.segments.get(0));
 				} catch (Exception e) {
-					path.delete();
+					// path.delete();
 					System.out.println(e.getMessage());
 				}
 			}
@@ -159,7 +159,7 @@ public class SortedLevelFile {
 
 		for (int i = 0; i < opts.maxMemtableSegments; i++) {
 			MemtableSegment seg = new MemtableSegment(opts.maxSegmentWriters);
-			seg.setCurrent(new Memtable(cwd.getPath(), opts.format));
+			seg.setCurrent(new Memtable(cwd.getPath(), opts));
 			this.segments.add(seg);
 
 		}
@@ -408,7 +408,7 @@ public class SortedLevelFile {
 	}
 
 	private void recovery() throws Exception {
-		new LevelRepairer(cwd.getPath()).repair(levels);
+		new LevelRepairer(this).repair(levels);
 
 	}
 
@@ -479,7 +479,7 @@ public class SortedLevelFile {
 			final Memtable current = seg.getCurrent();
 			if (current.isEmpty())
 				return;
-			seg.setCurrent(new Memtable(cwd.getPath(), opts.format));
+			seg.setCurrent(new Memtable(cwd.getPath(), opts));
 
 			awaitFutures(seg);
 

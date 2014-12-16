@@ -10,39 +10,43 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadFactory;
 
+import org.apache.log4j.Logger;
+
+import edu.bigtextformat.block.BlockFormat;
 import edu.bigtextformat.levels.compactor.LevelMerger;
 import edu.bigtextformat.levels.levelfile.LevelFile;
 
 public class LevelRepairer {
+	Logger log = Logger.getLogger(LevelRepairer.class);
 
-	private String path;
+	private SortedLevelFile file;
 
-	public LevelRepairer(String path) {
-		this.path = path;
+	public LevelRepairer(SortedLevelFile file) {
+		this.file = file;
 	}
 
 	public void repair(Levels levels) throws Exception {
-		ExecutorService execRec = Executors.newFixedThreadPool(4,
-				new ThreadFactory() {
+		ExecutorService execRec = Executors.newFixedThreadPool(
+				file.getOpts().recoveryThreads, new ThreadFactory() {
 
 					@Override
 					public Thread newThread(Runnable r) {
 						ThreadFactory tf = Executors.defaultThreadFactory();
 						Thread t = tf.newThread(r);
-						t.setName("Recovery Thread for " + path);
+						t.setName("Recovery Thread for " + file);
 						t.setDaemon(true);
 						return t;
 					}
 				});
 
-		final ExecutorService execCR = Executors.newFixedThreadPool(4,
-				new ThreadFactory() {
+		final ExecutorService execCR = Executors.newFixedThreadPool(
+				file.getOpts().recoveryWriters, new ThreadFactory() {
 
 					@Override
 					public Thread newThread(Runnable r) {
 						ThreadFactory tf = Executors.defaultThreadFactory();
 						Thread t = tf.newThread(r);
-						t.setName("Recovery Writer for " + path);
+						t.setName("Recovery Writer for " + file);
 						t.setDaemon(true);
 						return t;
 					}
@@ -59,18 +63,15 @@ public class LevelRepairer {
 			for (final Level to : levels) {
 				if (to.level() > 0) {
 					List<LevelFile> files = to.files();
-					for (int i = 0; i < files.size(); i++) {
 
+					for (int i = 0; i < files.size(); i++) {
 						LevelFile levelFile = files.get(i);
 
 						if (current.contains(levelFile))
 							continue;
-
-						final Set<LevelFile> intersection = new HashSet<LevelFile>();
-						intersection.add(levelFile);
-						if (i < files.size() - 1
-								&& levelFile.intersectsWith(files.get(i + 1)))
-							intersection.add(files.get(i + 1));
+						final Set<LevelFile> intersection = getConsecutiveIntersection(
+								to, i, file.getOpts().recoveryMaxIntersect,
+								file.getOpts().format);
 
 						if (intersection.size() > 1) {
 
@@ -82,10 +83,10 @@ public class LevelRepairer {
 
 								@Override
 								public Void call() throws Exception {
-									System.out
-											.println("Recovering failed merge among "
-													+ intersection.size()
-													+ " files. ");
+									log.info("Recovering failed merge among "
+											+ intersection.size()
+											+ " files on level " + to.level()
+											+ " of db " + file);
 									try {
 										LevelMerger.shrink(to, intersection,
 												execCR);
@@ -107,4 +108,24 @@ public class LevelRepairer {
 		execRec.shutdown();
 	}
 
+	public static Set<LevelFile> getConsecutiveIntersection(Level l, int init,
+			int max, BlockFormat format) throws Exception {
+		LevelFile first = l.get(init);
+		final Set<LevelFile> intersection = new HashSet<LevelFile>();
+		intersection.add(first);
+		int j = init;
+		boolean done = false;
+		byte[] maxKey = first.getMaxKey();
+		while (intersection.size() < max && j < l.size() - 1 && !done) {
+			LevelFile other = l.get(j + 1);
+			if (other.intersectsWith(first.getMinKey(), maxKey)) {
+				intersection.add(other);
+				j++;
+				if (format.compare(other.getMaxKey(), maxKey) > 0)
+					maxKey = other.getMaxKey();
+			} else
+				done = true;
+		}
+		return intersection;
+	}
 }

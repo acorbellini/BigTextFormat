@@ -6,6 +6,7 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 
 import edu.bigtextformat.levels.Level;
+import edu.bigtextformat.levels.LevelRepairer;
 import edu.bigtextformat.levels.SortedLevelFile;
 import edu.bigtextformat.levels.levelfile.LevelFile;
 
@@ -43,20 +44,9 @@ public class CompactorWorker implements Runnable {
 			if ((l.level() == 0 && checkLevel0Conditions(l))
 					|| (l.level() > 0 && checkLevelConditions(l))) {
 				if (level == 0) {
-					LevelFile curr = l.get(0);
-					from.add(curr);
-					int j = 0;
-					boolean done = false;
-					while (!done
-							&& from.size() <= file.getOpts().maxMergeElements) {
-						LevelFile other = l.get(j + 1);
-						if (other != null && curr.intersectsWith(other)) {
-							from.add(other);
-							curr = other;
-							j++;
-						} else
-							done = true;
-					}
+					from = LevelRepairer.getConsecutiveIntersection(l, 0,
+							file.getOpts().maxMergeElements,
+							file.getOpts().format);
 				} else
 					from.add(l.getRandom());
 

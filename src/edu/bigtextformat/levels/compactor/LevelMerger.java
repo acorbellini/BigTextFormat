@@ -14,7 +14,6 @@ import edu.bigtextformat.levels.Level;
 import edu.bigtextformat.levels.PairReader;
 import edu.bigtextformat.levels.datablock.DataBlock;
 import edu.bigtextformat.levels.datablock.DataBlockIterator;
-import edu.bigtextformat.levels.datablock.DataBlockWriter;
 import edu.bigtextformat.levels.levelfile.LevelFile;
 import edu.bigtextformat.levels.levelfile.LevelFileReader;
 
@@ -186,20 +185,14 @@ public class LevelMerger {
 			}
 		}
 
-		try {
-			DataBlockWriter db = new DataBlockWriter();
+		try {			
 			CompactWriter writer = new CompactWriter(level, execCR);
 			PairReader min = getNext(readers, level.getOpts().format, null);
 			while (min != null && min.getKey() != null) {
 				byte[] key = min.getKey();
-				db.add(key, min.getValue());
+				writer.add(key, min.getValue());
 				min.advance();
 				min = getNext(readers, level.getOpts().format, key);
-			}
-			DataBlockIterator it = db.getDB().iterator();
-			while (it.hasNext()) {
-				writer.add(it.getKey(), it.getVal());
-				it.advance();
 			}
 			writer.persist();
 		} catch (Exception e) {

@@ -9,14 +9,15 @@ import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import edu.bigtextformat.block.BlockFormat;
+import edu.bigtextformat.levels.LevelOptions;
 import edu.bigtextformat.util.LogFile;
 import edu.bigtextformat.util.Pair;
 
 public class Memtable {
 
-	public static Memtable fromFile(File path2, BlockFormat format)
+	public static Memtable fromFile(File path2, LevelOptions opts)
 			throws Exception {
-		Memtable mem = new Memtable(path2.getPath(), format);
+		Memtable mem = new Memtable(path2.getPath(), opts);
 		mem.log = new LogFile(path2);
 		for (byte[] array : mem.log) {
 			Operation op = new Operation().fromByteArray(array);
@@ -26,15 +27,11 @@ public class Memtable {
 		return mem;
 	}
 
-	// List<Operation> table = new ArrayList<>();
-
 	public static void updateLogCount(Integer currentCount) {
 		if (currentCount > logCount.get())
 			logCount.set(currentCount);
 
 	}
-
-	private static final int FLUSH_MAP_SIZE = 1000000;
 
 	TreeMap<byte[], byte[]> data;
 
@@ -46,17 +43,16 @@ public class Memtable {
 
 	private String path;
 
-	private BlockFormat format;
+	private LevelOptions opts;
 
-	public Memtable(String path, final BlockFormat format) {
+	public Memtable(String path, final LevelOptions opts) {
 		this.path = path;
-		// initLog();
-		this.format = format;
+		this.opts = opts;
 		data = new TreeMap<byte[], byte[]>(new Comparator<byte[]>() {
 
 			@Override
 			public int compare(byte[] arg0, byte[] arg1) {
-				return format.compare(arg0, arg1);
+				return opts.format.compare(arg0, arg1);
 			}
 		});
 	}
@@ -73,12 +69,10 @@ public class Memtable {
 	}
 
 	public boolean contains(byte[] k) {
-		// return false;
 		return data.containsKey(k);
 	}
 
 	public byte[] firstKey() {
-		// return null;
 		return data.firstKey();
 	}
 
@@ -92,26 +86,6 @@ public class Memtable {
 
 	public Pair<byte[], byte[]> getFirstIntersect(byte[] from,
 			boolean inclFrom, byte[] to, boolean inclTo, BlockFormat format) {
-		// return null;
-		// int cont = Search.search(from, keys, format);
-		// if (cont < 0)
-		// cont = -(cont + 1);
-		// else if (!inclFrom)
-		// cont = cont + 1;
-		//
-		// if (cont >= keys.size())
-		// return null;
-		//
-		// byte[] cs = keys.get(cont);
-		// int compare = format.compare(cs, to);
-		// if (compare > 0)
-		// return null;
-		//
-		// if (compare == 0 && !inclTo)
-		// return null;
-		//
-		// return Pair.create(cs, values.get(cont));
-
 		SortedMap<byte[], byte[]> sm = data.subMap(from, to);
 		if (sm.isEmpty())
 			return null;
@@ -129,21 +103,14 @@ public class Memtable {
 	}
 
 	public boolean isEmpty() throws Exception {
-		// if (log == null)
-		// return true;
-		// return log.isEmpty();
 		return estimatedSize == 0;
 	}
 
 	public byte[] lastKey() {
-		// return null;
 		return data.lastKey();
 	}
 
 	public long logSize() throws Exception {
-		// if (log == null)
-		// return 0;
-		// return log.size();
 		return estimatedSize;
 	}
 
@@ -151,15 +118,14 @@ public class Memtable {
 		StringBuilder builder = new StringBuilder();
 		Set<byte[]> es = data.keySet();
 		for (byte[] k : es) {
-			builder.append(format.print(k));
+			builder.append(opts.format.print(k));
 		}
 		return builder.toString();
 	}
-	
+
 	public void put(byte[] k, byte[] val) throws Exception {
 
 		Operation e = new Operation(OperationType.PUT, k, val);
-		// table.add(e);
 		byte[] opAsBytes = e.toByteArray();
 
 		synchronized (this) {
@@ -170,9 +136,5 @@ public class Memtable {
 
 			data.put(k, val);
 		}
-
-		// if (data.size() % FLUSH_MAP_SIZE == 0) {
-		// log.flush();
-		// }
 	}
 }

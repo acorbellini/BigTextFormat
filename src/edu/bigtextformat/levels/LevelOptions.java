@@ -8,37 +8,37 @@ import edu.jlime.util.compression.CompressionType;
 import edu.jlime.util.compression.Compressor;
 
 public class LevelOptions implements DataType<LevelOptions> {
+	public BlockFormat format;
 
-	public int maxBlockSize = 64 * 1024; // 64k
+	public Compressor comp = CompressionType.SNAPPY.getComp();
+
+	// Memtable Options
 	public int memTableSize = 512 * 1024; // 512k
+	public int maxMemtableSegments = 2;
+	public int maxLevel0WriterThreads = 4;
 
+	// Block and File Size
 	public int baseSize = 512 * 1024; // 512k
+	public int maxBlockSize = 64 * 1024; // 64k
+	public int maxSegmentWriters = 2;
+
+	// Level Options
 	public int maxLevel0Files = 4;
 	public int maxLevelFiles = 10;
 	public int compactLevel0Threshold = 4;
 
-	public BlockFormat format;
-
-	public Compressor comp = CompressionType.SNAPPY.getComp();
-	public int minMergeElements = 10;
-
-	public int sizeModifier = 3;
-	public float maxSize = 50 * 1024 * 1024;
+	// Compacting Options
 	public int intersectSplit = 10;
-
-	public boolean splitMemtable = true;
-	public boolean splitMergedFiles = true;
-
 	public int maxMergeElements = 4;
-
-	public int maxSegmentWriters = 2;
 	public int maxCompactorThreads = 4;
-	public int maxWriterThreads = 4;
-	public int maxLevel0WriterThreads = 4;
-	public int maxMemtableSegments = 2;
 	public int maxCompactionWriters = 4;
-
 	public int compactTrottle = (int) (512 * 1024f / 1000);
+
+	//Recovery Options
+	public int recoveryWriters = 10;
+	public int recoveryThreads = 10;
+
+	public int recoveryMaxIntersect = 1000;
 
 	@Override
 	public LevelOptions fromByteArray(byte[] data) throws Exception {
@@ -49,10 +49,8 @@ public class LevelOptions implements DataType<LevelOptions> {
 		baseSize = buff.getInt();
 		maxLevel0Files = buff.getInt();
 		maxLevelFiles = buff.getInt();
-		minMergeElements = buff.getInt();
 		compactLevel0Threshold = buff.getInt();
 		maxCompactorThreads = buff.getInt();
-		maxWriterThreads = buff.getInt();
 		int type = buff.getInt();
 		format = BlockFormat.getFormat(BlockFormats.get(type),
 				buff.getByteArray());
@@ -97,7 +95,7 @@ public class LevelOptions implements DataType<LevelOptions> {
 		return this;
 	}
 
-	public LevelOptions setMaxMemTablesWriting(int maxMemTablesWriting) {
+	public LevelOptions setSegmentWriters(int maxMemTablesWriting) {
 		this.maxSegmentWriters = maxMemTablesWriting;
 		return this;
 	}
@@ -107,8 +105,53 @@ public class LevelOptions implements DataType<LevelOptions> {
 		return this;
 	}
 
-	public LevelOptions setMinMergeElements(int minMergeElements) {
-		this.minMergeElements = minMergeElements;
+	public LevelOptions setCompactTrottle(int compactTrottle) {
+		this.compactTrottle = compactTrottle;
+		return this;
+	}
+
+	public LevelOptions setIntersectSplit(int intersectSplit) {
+		this.intersectSplit = intersectSplit;
+		return this;
+	}
+
+	public LevelOptions setMaxMemtableSegments(int maxMemtableSegments) {
+		this.maxMemtableSegments = maxMemtableSegments;
+		return this;
+	}
+
+	public LevelOptions setMaxLevel0WriterThreads(int maxLevel0WriterThreads) {
+		this.maxLevel0WriterThreads = maxLevel0WriterThreads;
+		return this;
+	}
+
+	public LevelOptions setMaxCompactorThreads(int maxCompactorThreads) {
+		this.maxCompactorThreads = maxCompactorThreads;
+		return this;
+	}
+
+	public LevelOptions setMaxMergeElements(int maxMergeElements) {
+		this.maxMergeElements = maxMergeElements;
+		return this;
+	}
+
+	public LevelOptions setMaxCompactionWriters(int maxCompactionWriters) {
+		this.maxCompactionWriters = maxCompactionWriters;
+		return this;
+	}
+
+	public LevelOptions setRecoveryThreads(int recoveryThreads) {
+		this.recoveryThreads = recoveryThreads;
+		return this;
+	}
+
+	public LevelOptions setRecoveryWriters(int recoveryWriters) {
+		this.recoveryWriters = recoveryWriters;
+		return this;
+	}
+	
+	public LevelOptions setRecoveryMaxIntersect(int recoveryMaxIntersect) {
+		this.recoveryMaxIntersect = recoveryMaxIntersect;
 		return this;
 	}
 
@@ -121,10 +164,8 @@ public class LevelOptions implements DataType<LevelOptions> {
 		buff.putInt(baseSize);
 		buff.putInt(maxLevel0Files);
 		buff.putInt(maxLevelFiles);
-		buff.putInt(minMergeElements);
 		buff.putInt(compactLevel0Threshold);
 		buff.putInt(maxCompactorThreads);
-		buff.putInt(maxWriterThreads);
 
 		buff.putInt(format.getType().getID());
 		buff.putByteArray(format.toByteArray());
