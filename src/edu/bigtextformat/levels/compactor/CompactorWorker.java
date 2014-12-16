@@ -42,21 +42,24 @@ public class CompactorWorker implements Runnable {
 				return false;
 			if ((l.level() == 0 && checkLevel0Conditions(l))
 					|| (l.level() > 0 && checkLevelConditions(l))) {
-				// System.out.println(file.print());
-				// LevelFile from = LevelMerger.shrinkLevel0(l);
-				// System.out.println(file.print());
-				LevelFile first = l.getRandom();
-
 				if (level == 0) {
-					// if (compactor.isForceCompact())
-					// from = l.intersect(first.getMinKey(), first.getMaxKey());
-					// else
-					from.addAll(l.intersect(first.getMinKey(),
-							first.getMaxKey(), file.getOpts().maxMergeElements));
+					LevelFile curr = l.get(0);
+					from.add(curr);
+					int j = 0;
+					boolean done = false;
+					while (!done
+							&& from.size() <= file.getOpts().maxMergeElements) {
+						LevelFile other = l.get(j + 1);
+						if (other != null && curr.intersectsWith(other)) {
+							from.add(other);
+							curr = other;
+							j++;
+						} else
+							done = true;
+					}
+				} else
+					from.add(l.getRandom());
 
-				} else {
-					from.add(first);
-				}
 				Level next = file.getLevel(level + 1);
 				LevelMerger.merge(from, l, next, !compactor.isForceCompact(),
 						exec);

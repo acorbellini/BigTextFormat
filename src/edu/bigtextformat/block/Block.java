@@ -11,79 +11,18 @@ import edu.jlime.util.compression.CompressionType;
 import edu.jlime.util.compression.Compressor;
 
 public class Block implements DataType<Block> {
-	private static int check(byte[] built, int start) {
-		for (int j = start; j < built.length - 8 + 1; j++) {
-			boolean escape = true;
-			boolean blockend = true;
-			boolean blockstart = true;
-			for (int i = 0; i < 8; i++) {
-				if (built[i + j] != ESCAPE_MAGIC_AS_BYTES[i]) {
-					escape = false;
-				}
-				if (built[i + j] != BLOCK_MAGIC_AS_BYTES[i]) {
-					blockstart = false;
-				}
-				if (built[i + j] != BLOCK_MAGIC_END_AS_BYTES[i]) {
-					blockend = false;
-				}
-			}
-			if (escape || blockend || blockstart)
-				return j;
-		}
-		return built.length;
-	}
-
-	private static int checkEscape(byte[] built, int start) {
-		for (int j = start; j < built.length - 8 + 1; j++) {
-			boolean escape = true;
-			for (int i = 0; i < 8; i++) {
-				if (built[i + j] != ESCAPE_MAGIC_AS_BYTES[i]) {
-					escape = false;
-				}
-			}
-			if (escape)
-				return j;
-		}
-		return built.length;
-	}
 
 	public static Block create(BlockFile blockFile, int minSize)
 			throws Exception {
 		return new Block(blockFile, -1, minSize, -1);
 	}
 
-	private static byte[] escape(byte[] built) {
-		int i = check(built, 0);
-		byte[] ret = built;
-		if (i < built.length) {
-			int last = 0;
-			ByteBuffer buff = new ByteBuffer(built.length);
-			while (i < built.length) {
-				buff.putRawByteArray(built, last, i - last);
-				buff.putLong(ESCAPE_MAGIC);
-				buff.putRawByteArray(built, i, 8);
-				last = i + 8;
-				i = check(built, last);
-			}
-			buff.putRawByteArray(built, last, i - last);
-			return buff.build();
-		}
-		return ret;
-	}
-	public static void main(String[] args) {
-		// byte[] escape = escape("BLKSTARTESCMAGICBLOCKEND".getBytes());
-		byte[] escape = escape("123BLKSTART45678ESCMAGIC9101112BLOCKEND131415"
-				.getBytes());
-		// byte[] escape = escape("BLKSTARTasdnasmdnsaBLOCKEND".getBytes());
-		System.out.println(new String(escape));
-		System.out.println(new String(unescape(escape)));
-	}
 	public static Block read(BlockFile blockFile, long pos) throws Exception {
 		RawFile raw = blockFile.getRawFile();
 		int blockSize = raw.readInt(pos + 8);
 		byte[] data = new byte[blockSize];
 		raw.read(pos, data);
-		return new Block(blockFile, pos, -1, pos + blockSize)
+		return new Block(blockFile, pos, 16, pos + blockSize)
 				.fromByteArray(data);
 	}
 
@@ -91,43 +30,18 @@ public class Block implements DataType<Block> {
 			throws Exception {
 		f.writeByte(pos2 + 8 + 4, status);
 	}
-	private static byte[] unescape(byte[] built) {
-		int i = checkEscape(built, 0);
-		byte[] ret = built;
-		if (i < built.length) {
-			int last = 0;
-			ByteBuffer buff = new ByteBuffer(built.length);
-			while (i < built.length) {
-				buff.putRawByteArray(built, last, i - last);
-				buff.putRawByteArray(built, i + 8, 8);
-				last = i + 8 + 8;
-				i = checkEscape(built, last);
-			}
-			buff.putRawByteArray(built, last, i - last);
-			return buff.build();
-		}
-		return ret;
 
-		// ByteBuffer buff = new ByteBuffer(byteArray.length);
-		// for (int i = 0; i < byteArray.length;) {
-		// if (i + 8 - 1 < byteArray.length
-		// && DataTypeUtils.byteArrayToLong(byteArray, i) == ESCAPE_MAGIC) {
-		// buff.putRawByteArray(byteArray, i + 8, 8);
-		// i += 16;
-		// } else {
-		// buff.put(byteArray[i]);
-		// i++;
-		// }
-		// }
-		// return buff.build();
-	}
 	private static final byte[] BLOCK_MAGIC_END_AS_BYTES = "BLOCKEND"
 			.getBytes();
 	private static final byte[] ESCAPE_MAGIC_AS_BYTES = "ESCMAGIC".getBytes();
 	private static final byte[] BLOCK_MAGIC_AS_BYTES = "BLKSTART".getBytes();
 
+	private static final long BLOCK_MAGIC_V2 = DataTypeUtils
+			.byteArrayToLong("BLKSTAV2".getBytes());
+
 	private static final long BLOCK_MAGIC = DataTypeUtils
 			.byteArrayToLong(BLOCK_MAGIC_AS_BYTES);
+
 	private static final long ESCAPE_MAGIC = DataTypeUtils
 			.byteArrayToLong(ESCAPE_MAGIC_AS_BYTES);
 	private static final long BLOCK_MAGIC_END = DataTypeUtils
@@ -137,11 +51,6 @@ public class Block implements DataType<Block> {
 	BlockFile file;
 
 	private boolean deleted = false;
-
-	// BLOCKSTART+TOTAL_BLOCK_SIZE + STATUS + PAYLOAD_SIZE + PAYLOAD (0) + CRC +
-	// PAD (0) +
-	// TOTAL_BLOCK_SIZE + BLOCKEND
-
 	private boolean fixed = false;
 
 	private boolean memoryMapped = false;
@@ -157,6 +66,7 @@ public class Block implements DataType<Block> {
 	private java.nio.ByteBuffer mappedBuffer;
 
 	private Compressor comp;
+	private int origSize = 128;
 
 	public Block(BlockFile blockFile, long pos, int minSize, long next) {
 		this.pos = pos;
@@ -165,77 +75,39 @@ public class Block implements DataType<Block> {
 		this.file = blockFile;
 	}
 
-	public ByteBuffer asByteBuffer() {
-		ByteBuffer buff = new ByteBuffer(1 + 4 + p.length + 8);
-		if (comp != null)
-			buff.put(comp.getType().getId());
-		else
-			buff.put((byte) -1);
-		buff.putByteArray(p);// NDATA
-		buff.putLong(getCheckSum(p)); // 8
-		byte[] built = buff.build();
-
-		byte[] replaced = escape(built);
-		// int max = Math.max(maxPayloadSize - 8, 4 + 1 + 4 + replaced.length +
-		// 4
-		// + 8);
-
-		int max = 8 + 4 + 1 + 4 + replaced.length + 4 + 8;
-		if (maxPayloadSize > max)
-			max = maxPayloadSize;
-		else
-			System.out.println("Less than max");
-
-		ByteBuffer ret = new ByteBuffer(max);
-		ret.putLong(BLOCK_MAGIC); // 8
-		ret.putInt(max); // Points to end (except the first elements).
-		ret.put(getStatus()); // 1
-		ret.putByteArray(replaced); // 4 + N
-		ret.padTo(maxPayloadSize - 4 - 8);
-		ret.putInt(ret.size() + 4 + 8); // 4 Points to start
-		ret.putLong(BLOCK_MAGIC_END); // 8
-
-		// int size = ret.getBuffered().length;
-		// byte[] build = ret.build();
-		// if (size != ret.getBuffered().length)
-		// System.out.println("This should not happen.");
-		return ret;
-
-	}
-
 	@Override
 	public Block fromByteArray(byte[] data) throws Exception {
-		ByteBuffer outer = new ByteBuffer(data);
-		long magic = outer.getLong();
-		if (magic != BLOCK_MAGIC)
+		ByteBuffer buffer = new ByteBuffer(data);
+		long magic = buffer.getLong();
+		if (magic != BLOCK_MAGIC && magic != BLOCK_MAGIC_V2)
 			throw new Exception("Invalid Block");
 
-		int pointsToEnd = outer.getInt();
-
-		byte status = outer.get();
+		int pointsToEnd = buffer.getInt();
+		byte status = buffer.get();
 		deleted = ((status & 0x1) == 0x1);
 		fixed = ((status & 0x2) == 0x2);
 
 		// byte[] escaped = outer.getByteArray();
 
 		this.maxPayloadSize = data.length;
-		byte compType = outer.get();
+		byte compType = buffer.get();
 		if (compType != -1) {
 			comp = CompressionType.getByID(compType);
 		}
-		p = outer.getByteArray();
-		checksum = outer.getLong();
 
-		outer.setOffset(pointsToEnd - 4 - 8);
+		if (magic == BLOCK_MAGIC_V2)
+			this.origSize = buffer.getInt();
 
-		int pointsToStart = outer.getInt();
-		long endmagic = outer.getLong();
+		p = buffer.getByteArray();
+		checksum = buffer.getLong();
+
+		buffer.setOffset(pointsToEnd - 4 - 8);
+
+		int pointsToStart = buffer.getInt();
+		long endmagic = buffer.getLong();
 		if (endmagic != BLOCK_MAGIC_END) {
 			throw new Exception("Invalid Block End");
 		}
-
-		// ByteBuffer buff = new ByteBuffer(unescape(escaped));
-
 		if (checksum != getCheckSum(p))
 			throw new Exception("Different checksums");
 		return this;
@@ -282,7 +154,7 @@ public class Block implements DataType<Block> {
 
 	public byte[] payload() {
 		if (comp != null)
-			return comp.uncompress(p);
+			return comp.uncompress(p, origSize);
 		return p;
 	}
 
@@ -327,7 +199,9 @@ public class Block implements DataType<Block> {
 	public void setPayload(byte[] newPayload) throws Exception {
 		long oldpos = pos;
 		byte[] oldPayload = p;
+		int origSizeOld = origSize;
 		byte[] payload = newPayload;
+		this.origSize = payload.length;
 		if (comp != null)
 			payload = comp.compress(newPayload);
 
@@ -338,6 +212,7 @@ public class Block implements DataType<Block> {
 		if (pos != -1 && bytes.length > size()) {
 			if (fixed) {
 				this.p = oldPayload;
+				this.origSize = origSizeOld;
 				throw new Exception("Can't expand fixed block from " + size()
 						+ " to " + bytes.length);
 			}
@@ -365,20 +240,21 @@ public class Block implements DataType<Block> {
 	@Override
 	public byte[] toByteArray() {
 
-		int max = 8 + 4 + 1 + (1 + 4 + p.length + 8) + 4 + 8;
+		int max = 8 + 4 + 1 + (1 + 4 + 4 + p.length + 8) + 4 + 8;
 		if (maxPayloadSize > max)
 			max = maxPayloadSize;
 
 		ByteBuffer ret = new ByteBuffer(max);
-		ret.putLong(BLOCK_MAGIC); // 8
+		ret.putLong(BLOCK_MAGIC_V2); // 8
 		ret.putInt(max); // Points to end (except the first elements).
 		ret.put(getStatus()); // 1
-		// ret.putByteArray(replaced); // 4 + N
 
 		if (comp != null)
 			ret.put(comp.getType().getId());
 		else
 			ret.put((byte) -1);
+
+		ret.putInt(origSize);
 
 		ret.putByteArray(p);// NDATA
 		ret.putLong(getCheckSum(p)); // 8
@@ -388,9 +264,6 @@ public class Block implements DataType<Block> {
 		ret.putInt(ret.size() + 4 + 8); // 4 Points to start
 		ret.putLong(BLOCK_MAGIC_END); // 8
 
-		// if (pos != -1 && fixed && ret.size() > size()) {
-		// throw new Exception("Trying to increase fixed block size");
-		// }
 		byte[] build = ret.build();
 		return build;
 	}

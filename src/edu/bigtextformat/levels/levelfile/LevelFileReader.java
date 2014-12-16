@@ -2,6 +2,7 @@ package edu.bigtextformat.levels.levelfile;
 
 import java.util.Iterator;
 
+import edu.bigtextformat.levels.datablock.DataBlockReference;
 import edu.bigtextformat.levels.index.Index;
 
 public class LevelFileReader implements Iterator<DataBlockReference> {

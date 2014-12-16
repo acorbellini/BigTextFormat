@@ -74,7 +74,7 @@ public class IndexData implements DataType<IndexData> {
 			this.comp = CompressionType.getByID(buff.get());
 		byte[] listsAsBytes = buff.getByteArray();
 		if (this.compressed)
-			listsAsBytes = comp.uncompress(listsAsBytes);
+			listsAsBytes = comp.uncompress(listsAsBytes, 512);
 		ByteBuffer lists = new ByteBuffer(listsAsBytes);
 		this.keys = lists.getByteArrayList();
 		this.values = lists.getByteArrayList();

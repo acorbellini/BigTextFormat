@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import edu.bigtextformat.levels.Level;
@@ -90,7 +89,7 @@ public class CompactWriter {
 		dbs = new ArrayList<DataBlock>();
 		currSize = 0;
 		synchronized (cont) {
-			while (cont.get() >= level.getOpts().maxWriterThreads)
+			while (cont.get() >= level.getOpts().maxCompactionWriters)
 				cont.wait();
 			cont.incrementAndGet();
 		}

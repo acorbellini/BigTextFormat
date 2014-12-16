@@ -216,6 +216,8 @@ public class Level implements Iterable<LevelFile> {
 	public LevelFile get(int i) {
 		lock.readLock().lock();
 		try {
+			if (i >= files.size())
+				return null;
 			return files.get(i);
 		} finally {
 			lock.readLock().unlock();
@@ -308,18 +310,10 @@ public class Level implements Iterable<LevelFile> {
 				return found;
 
 			for (LevelFile levelFile : files) {
-				if (found.size() >= maxSize)
+				if (found.size() >= maxSize
+						|| getOpts().format.compare(max, levelFile.getMinKey()) < 0)
 					return found;
-				if (level > 0
-						&& getOpts().format.compare(max, levelFile.getMinKey()) < 0) {
-					// System.out.println("Current files at level " + level);
-					// for (LevelFile f : files) {
-					// System.out.println("Files " + f + " minKey:"
-					// + getOpts().format.print(f.getMinKey()) +" maxKey:"
-					// + getOpts().format.print(f.getMaxKey()));
-					// }
-					return found;
-				} else if (getOpts().format.compare(levelFile.getMinKey(), max) <= 0
+				else if (getOpts().format.compare(levelFile.getMinKey(), max) <= 0
 						&& getOpts().format.compare(levelFile.getMaxKey(), min) >= 0)
 					found.add(levelFile);
 			}

@@ -11,18 +11,17 @@ public class LevelOptions implements DataType<LevelOptions> {
 
 	public int maxBlockSize = 64 * 1024; // 64k
 	public int memTableSize = 512 * 1024; // 512k
-	public int maxMemTablesWriting = 5;
+
 	public int baseSize = 512 * 1024; // 512k
-	public int maxLevel0Files = 15;
-	public int maxLevelFiles = 20;
-	public int compactLevel0Threshold = 2;
+	public int maxLevel0Files = 4;
+	public int maxLevelFiles = 10;
+	public int compactLevel0Threshold = 4;
 
 	public BlockFormat format;
 
 	public Compressor comp = CompressionType.SNAPPY.getComp();
 	public int minMergeElements = 10;
-	public int maxCompactorThreads = 6;
-	public int maxWriterThreads = 20;
+
 	public int sizeModifier = 3;
 	public float maxSize = 50 * 1024 * 1024;
 	public int intersectSplit = 10;
@@ -31,17 +30,22 @@ public class LevelOptions implements DataType<LevelOptions> {
 	public boolean splitMergedFiles = true;
 
 	public int maxMergeElements = 4;
-	public int maxLevel0WriterThreads = 10;
-	public int maxMemtableSegments = 4;
-	public int maxCompactionWriters = 20;
-	public int compactTrottle = (int) (128 * 1024f / 1000);
+
+	public int maxSegmentWriters = 2;
+	public int maxCompactorThreads = 4;
+	public int maxWriterThreads = 4;
+	public int maxLevel0WriterThreads = 4;
+	public int maxMemtableSegments = 2;
+	public int maxCompactionWriters = 4;
+
+	public int compactTrottle = (int) (512 * 1024f / 1000);
 
 	@Override
 	public LevelOptions fromByteArray(byte[] data) throws Exception {
 		ByteBuffer buff = new ByteBuffer(data);
 		maxBlockSize = buff.getInt();
 		memTableSize = buff.getInt();
-		maxMemTablesWriting = buff.getInt();
+		maxSegmentWriters = buff.getInt();
 		baseSize = buff.getInt();
 		maxLevel0Files = buff.getInt();
 		maxLevelFiles = buff.getInt();
@@ -94,7 +98,7 @@ public class LevelOptions implements DataType<LevelOptions> {
 	}
 
 	public LevelOptions setMaxMemTablesWriting(int maxMemTablesWriting) {
-		this.maxMemTablesWriting = maxMemTablesWriting;
+		this.maxSegmentWriters = maxMemTablesWriting;
 		return this;
 	}
 
@@ -113,7 +117,7 @@ public class LevelOptions implements DataType<LevelOptions> {
 		ByteBuffer buff = new ByteBuffer();
 		buff.putInt(maxBlockSize);
 		buff.putInt(memTableSize);
-		buff.putInt(maxMemTablesWriting);
+		buff.putInt(maxSegmentWriters);
 		buff.putInt(baseSize);
 		buff.putInt(maxLevel0Files);
 		buff.putInt(maxLevelFiles);

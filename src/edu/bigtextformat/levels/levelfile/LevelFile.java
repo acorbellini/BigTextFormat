@@ -131,12 +131,13 @@ public class LevelFile {
 	}
 
 	public synchronized void close() throws Exception {
+		cache.invalidateAll();
 		wl.lock();
 		try {
 			if (file != null)
 				file.close();
 			file = null;
-			index = null;
+			index = null;			
 			if (closeTask != null) {
 				closeTask.cancel();
 				closeTask = null;

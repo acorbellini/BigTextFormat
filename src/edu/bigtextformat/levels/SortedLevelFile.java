@@ -158,7 +158,7 @@ public class SortedLevelFile {
 				});
 
 		for (int i = 0; i < opts.maxMemtableSegments; i++) {
-			MemtableSegment seg = new MemtableSegment();
+			MemtableSegment seg = new MemtableSegment(opts.maxSegmentWriters);
 			seg.setCurrent(new Memtable(cwd.getPath(), opts.format));
 			this.segments.add(seg);
 

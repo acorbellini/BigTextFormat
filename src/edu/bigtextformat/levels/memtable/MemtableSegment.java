@@ -10,17 +10,20 @@ import java.util.concurrent.ThreadFactory;
 public class MemtableSegment {
 	volatile Memtable current;
 	List<Future<Void>> fut = new ArrayList<Future<Void>>();
-	private ExecutorService exec = Executors.newFixedThreadPool(2,
-			new ThreadFactory() {
-				@Override
-				public Thread newThread(Runnable r) {
-					ThreadFactory tf = Executors.defaultThreadFactory();
-					Thread t = tf.newThread(r);
-					t.setName("Segment Writer");
-					t.setDaemon(true);
-					return t;
-				}
-			});
+	private ExecutorService exec;
+
+	public MemtableSegment(int maxwriter) {
+		exec = Executors.newFixedThreadPool(maxwriter, new ThreadFactory() {
+			@Override
+			public Thread newThread(Runnable r) {
+				ThreadFactory tf = Executors.defaultThreadFactory();
+				Thread t = tf.newThread(r);
+				t.setName("Segment Writer");
+				t.setDaemon(true);
+				return t;
+			}
+		});
+	}
 
 	public Memtable getCurrent() {
 		return current;
