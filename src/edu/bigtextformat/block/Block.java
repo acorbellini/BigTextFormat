@@ -3,6 +3,8 @@ package edu.bigtextformat.block;
 import java.util.zip.CRC32;
 import java.util.zip.Checksum;
 
+import org.apache.log4j.Logger;
+
 import edu.bigtextformat.raw.RawFile;
 import edu.bigtextformat.record.DataType;
 import edu.jlime.util.ByteBuffer;
@@ -46,6 +48,7 @@ public class Block implements DataType<Block> {
 			.byteArrayToLong(ESCAPE_MAGIC_AS_BYTES);
 	private static final long BLOCK_MAGIC_END = DataTypeUtils
 			.byteArrayToLong(BLOCK_MAGIC_END_AS_BYTES);
+	private static final int OVERHEAD = 8 + 4 + 1 + (1 + 4 + 4 + 8) + 4 + 8;
 	long pos = -1;
 
 	BlockFile file;
@@ -67,6 +70,7 @@ public class Block implements DataType<Block> {
 
 	private Compressor comp;
 	private int origSize = 128;
+	private Logger log = Logger.getLogger(Block.class);
 
 	public Block(BlockFile blockFile, long pos, int minSize, long next) {
 		this.pos = pos;
@@ -83,6 +87,10 @@ public class Block implements DataType<Block> {
 			throw new Exception("Invalid Block");
 
 		int pointsToEnd = buffer.getInt();
+
+		if (pointsToEnd != data.length)
+			throw new Exception("Invalid Block Width");
+
 		byte status = buffer.get();
 		deleted = ((status & 0x1) == 0x1);
 		fixed = ((status & 0x2) == 0x2);
@@ -104,6 +112,10 @@ public class Block implements DataType<Block> {
 		buffer.setOffset(pointsToEnd - 4 - 8);
 
 		int pointsToStart = buffer.getInt();
+
+		if (pointsToEnd != pointsToStart)
+			throw new Exception("Invalid Block Width");
+
 		long endmagic = buffer.getLong();
 		if (endmagic != BLOCK_MAGIC_END) {
 			throw new Exception("Invalid Block End");
@@ -240,13 +252,13 @@ public class Block implements DataType<Block> {
 	@Override
 	public byte[] toByteArray() {
 
-		int max = 8 + 4 + 1 + (1 + 4 + 4 + p.length + 8) + 4 + 8;
+		int max = OVERHEAD + p.length;
 		if (maxPayloadSize > max)
 			max = maxPayloadSize;
 
 		ByteBuffer ret = new ByteBuffer(max);
 		ret.putLong(BLOCK_MAGIC_V2); // 8
-		ret.putInt(max); // Points to end (except the first elements).
+		ret.putInt(max); // Width
 		ret.put(getStatus()); // 1
 
 		if (comp != null)
@@ -261,16 +273,21 @@ public class Block implements DataType<Block> {
 
 		int pad = maxPayloadSize - 4 - 8;
 		ret.padTo(pad);
-		ret.putInt(ret.size() + 4 + 8); // 4 Points to start
+		int otherMax = ret.size() + 4 + 8;
+		ret.putInt(otherMax); // 4 Width
 		ret.putLong(BLOCK_MAGIC_END); // 8
 
+		if (max != otherMax)
+			log.error("This shouldn't happen.");
+		if (ret.getBuffered().length != max)
+			log.error("This shouldn't happen too.");
 		byte[] build = ret.build();
 		return build;
 	}
 
 	private void updateMaxSize(int length) {
 		if (fixed && pos == -1) {
-			maxPayloadSize = length;
+			maxPayloadSize = length + OVERHEAD;
 		} else if (length > maxPayloadSize) {
 			maxPayloadSize = (int) (length * 2);
 		}

@@ -1,10 +1,14 @@
 package edu.bigtextformat.levels.levelfile;
 
 import java.io.File;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.UUID;
@@ -13,6 +17,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+
+import javax.swing.text.DefaultEditorKit.CopyAction;
 
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
@@ -50,11 +56,12 @@ public class LevelFile {
 	}
 
 	public static LevelFile newFile(String dir, LevelOptions opts, int level,
-			int cont) throws Exception {
+			int cont, SortedLevelFile db) throws Exception {
 		String path = SortedLevelFile.getTempPath(dir, level, cont);
 		BlockFile bf = createBlockFile(path, opts);
 		bf.getHeader().putData("opts", opts.toByteArray());
-		LevelFile lf = new LevelFile(new File(path), level, cont, null, null);
+		LevelFile lf = new LevelFile(new File(path), level, cont, null, null,
+				db);
 		lf.setFile(bf);
 		lf.setOpts(opts);
 		lf.state = LevelFileStatus.CREATED;
@@ -63,9 +70,9 @@ public class LevelFile {
 	}
 
 	public static LevelFile open(int level, int cont, String levelFileName,
-			byte[] minKey, byte[] maxKey) {
+			byte[] minKey, byte[] maxKey, SortedLevelFile db) {
 		return new LevelFile(new File(levelFileName), level, cont, minKey,
-				maxKey);
+				maxKey, db);
 	}
 
 	public static BlockFile openBlockFile(String path) throws Exception {
@@ -85,11 +92,19 @@ public class LevelFile {
 
 	private volatile LevelFileStatus state = LevelFileStatus.PERSISTED;
 
+	private volatile Object stateLock = new Object();
+
 	private volatile BlockFile file = null;
+
+	private volatile Object fileLock = new Object();
 
 	private volatile LevelOptions opts = null;
 
+	private volatile Object optsLock = new Object();
+
 	private volatile Index index;
+
+	private volatile Object indexLock = new Object();
 
 	private int cont;
 	private volatile int level;
@@ -116,7 +131,10 @@ public class LevelFile {
 
 	private TimerTask closeTask;
 
-	private LevelFile(File f, int level, int cont, byte[] minKey, byte[] maxKey) {
+	private SortedLevelFile db;
+
+	private LevelFile(File f, int level, int cont, byte[] minKey,
+			byte[] maxKey, SortedLevelFile db) {
 		this.dir = f.getParent();
 		this.path = f.getPath();
 		this.name = f.getName();
@@ -126,6 +144,7 @@ public class LevelFile {
 		this.maxKey = maxKey;
 		this.rl = closeLock.readLock();
 		this.wl = closeLock.writeLock();
+		this.db = db;
 	}
 
 	private Cache<DataBlockID, DataBlock> getCache() {
@@ -167,7 +186,9 @@ public class LevelFile {
 		getFile().newFixedBlock(getIndex().toByteArray());
 		getFile().close();
 		fixedIndex = null;
-		state = LevelFileStatus.COMMITED;
+		synchronized (stateLock) {
+			state = LevelFileStatus.COMMITED;
+		}
 	}
 
 	public void commitAndPersist() throws Exception {
@@ -176,7 +197,7 @@ public class LevelFile {
 	}
 
 	public boolean contains(byte[] k, BlockFormat format) throws Exception {
-		synchronized (this) {
+		synchronized (stateLock) {
 			if (state.equals(LevelFileStatus.DELETED))
 				return false;
 		}
@@ -196,7 +217,7 @@ public class LevelFile {
 		return false;
 	}
 
-	public synchronized void delete() throws Exception {
+	public void delete() throws Exception {
 		wl.lock();
 		try {
 			getFile().delete();
@@ -205,14 +226,16 @@ public class LevelFile {
 			Files.delete(Paths.get(path));
 			e.printStackTrace();
 		} finally {
-			state = LevelFileStatus.DELETED;
+			synchronized (stateLock) {
+				state = LevelFileStatus.DELETED;
+			}
 			wl.unlock();
 		}
 
 	}
 
 	public byte[] get(byte[] k, BlockFormat format) throws Exception {
-		synchronized (this) {
+		synchronized (stateLock) {
 			if (state.equals(LevelFileStatus.DELETED))
 				return null;
 		}
@@ -254,15 +277,21 @@ public class LevelFile {
 		lastUsed = System.currentTimeMillis();
 
 		if (file == null) {
-			synchronized (this) {
+			synchronized (fileLock) {
 				if (file == null) {
 					file = openBlockFile(path);
-					if (!state.equals(LevelFileStatus.CREATED))
+					if (!isCreated())
 						startTimer();
 				}
 			}
 		}
 		return file;
+	}
+
+	private boolean isCreated() {
+		synchronized (stateLock) {
+			return state.equals(LevelFileStatus.CREATED);
+		}
 	}
 
 	public Pair<byte[], byte[]> getFirstBetween(byte[] from, boolean inclFrom,
@@ -293,21 +322,63 @@ public class LevelFile {
 			return fixedIndex;
 
 		if (index == null) {
-			synchronized (this) {
+			synchronized (indexLock) {
 				if (index == null) {
 					rl.lock();
-					byte[] payload;
+					byte[] payload = null;
 					try {
 						payload = getFile().getLastBlock().payload();
+					} catch (Exception e) {
+
 					} finally {
 						rl.unlock();
 					}
-
+					if (payload == null) {
+						recovery();
+						payload = getFile().getLastBlock().payload();
+					}
 					index = new Index(getOpts().format).fromByteArray(payload);
 				}
 			}
 		}
 		return index;
+	}
+
+	private void recovery() throws Exception {
+		wl.lock();
+		try {
+			List<DataBlock> list = new ArrayList<DataBlock>();
+			try {
+				for (Block block : getFile()) {
+					DataBlockImpl db = new DataBlockImpl(this, block.getPos(),
+							block.size()).fromByteArray(block.payload());
+					list.add(db);
+				}
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+
+			LevelFile file = LevelFile.newFile(dir, opts, level,
+					db.getLastLevelIndex(level), db);
+
+			for (DataBlock dataBlock : list)
+				file.put(dataBlock);
+
+			file.commit();
+
+			getFile().close();
+			this.file = null;
+			this.index = null;
+			this.cache = null;
+
+			Files.move(Paths.get(file.path), Paths.get(path),
+					StandardCopyOption.REPLACE_EXISTING);
+
+		} catch (Exception e) {
+			e.printStackTrace();
+		} finally {
+			wl.unlock();
+		}
 	}
 
 	public long getLastBlockPosition() throws Exception {
@@ -345,7 +416,7 @@ public class LevelFile {
 
 	public LevelOptions getOpts() throws Exception {
 		if (opts == null) {
-			synchronized (this) {
+			synchronized (optsLock) {
 				if (opts == null) {
 					rl.lock();
 					byte[] data;
@@ -385,11 +456,16 @@ public class LevelFile {
 	}
 
 	public boolean isDeleted() {
-		return this.state.equals(LevelFileStatus.DELETED);
+		synchronized (stateLock) {
+			return this.state.equals(LevelFileStatus.DELETED);
+
+		}
 	}
 
-	public synchronized boolean isMerging() {
-		return state.equals(LevelFileStatus.MERGING);
+	public boolean isMerging() {
+		synchronized (stateLock) {
+			return state.equals(LevelFileStatus.MERGING);
+		}
 	}
 
 	public void moveTo(int i, int cont) throws Exception {
@@ -420,7 +496,9 @@ public class LevelFile {
 		path = newPath;
 		name = new File(newPath).getName();
 		file = null;
-		state = LevelFileStatus.PERSISTED;
+		synchronized (stateLock) {
+			state = LevelFileStatus.PERSISTED;
+		}
 		startTimer();
 	}
 
@@ -444,7 +522,7 @@ public class LevelFile {
 	}
 
 	public void put(DataBlock dataBlock) throws Exception {
-		if (!state.equals(LevelFileStatus.CREATED))
+		if (!isCreated())
 			throw new Exception("LevelFile is read only");
 
 		byte[] firstKey = dataBlock.firstKey();
@@ -497,11 +575,14 @@ public class LevelFile {
 
 	}
 
-	public synchronized boolean setMerging(int level) {
-		if (isDeleted() || isMerging() || this.level != level)
-			return false;
-		this.state = LevelFileStatus.MERGING;
-		return true;
+	public boolean setMerging(int level) {
+		synchronized (stateLock) {
+			if (isDeleted() || isMerging() || this.level != level)
+				return false;
+			this.state = LevelFileStatus.MERGING;
+			return true;
+		}
+
 	}
 
 	public void setOpts(LevelOptions opts) {
@@ -549,9 +630,11 @@ public class LevelFile {
 		return "";
 	}
 
-	public synchronized void unSetMerging() {
-		if (isMerging())
-			this.state = LevelFileStatus.PERSISTED;
+	public void unSetMerging() {
+		synchronized (stateLock) {
+			if (isMerging())
+				this.state = LevelFileStatus.PERSISTED;
+		}
 	}
 
 	public boolean intersectsWith(byte[] minKey2, byte[] maxKey2)

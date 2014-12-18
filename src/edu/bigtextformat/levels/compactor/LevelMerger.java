@@ -9,6 +9,8 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 
+import org.apache.log4j.Logger;
+
 import edu.bigtextformat.block.BlockFormat;
 import edu.bigtextformat.levels.Level;
 import edu.bigtextformat.levels.PairReader;
@@ -18,6 +20,8 @@ import edu.bigtextformat.levels.levelfile.LevelFile;
 import edu.bigtextformat.levels.levelfile.LevelFileReader;
 
 public class LevelMerger {
+
+	private static Logger log = Logger.getLogger(LevelMerger.class);
 
 	public static PairReader getNext(List<PairReader> readers,
 			BlockFormat format, byte[] before) {
@@ -82,7 +86,8 @@ public class LevelMerger {
 		}
 		CompactWriter writer = new CompactWriter(to, exec);
 		if (trottle)
-			((CompactWriter) writer).setTrottle(current.getOpts().compactTrottle);
+			((CompactWriter) writer)
+					.setTrottle(current.getOpts().compactTrottle);
 
 		ArrayList<LevelFile> intersectSorted = new ArrayList<>(intersect);
 
@@ -90,8 +95,8 @@ public class LevelMerger {
 			@Override
 			public int compare(LevelFile o1, LevelFile o2) {
 				try {
-					return current.getOpts().format.compare(o1.getMaxKey(),
-							o2.getMaxKey());
+					return current.getOpts().format.compare(o1.getMinKey(),
+							o2.getMinKey());
 				} catch (Exception e) {
 					e.printStackTrace();
 				}
@@ -110,8 +115,16 @@ public class LevelMerger {
 		}
 
 		List<PairReader> fromReaders = new ArrayList<PairReader>();
-		for (LevelFile from : list) {
-			fromReaders.add(from.getPairReader());
+		Iterator<LevelFile> itlist = list.iterator();
+		while (itlist.hasNext()) {
+			LevelFile from = (LevelFile) itlist.next();
+			try {
+				fromReaders.add(from.getPairReader());
+			} catch (Exception e) {
+				log.info("DELETING " + from + " due to " + e.getMessage());
+				from.delete();
+				itlist.remove();
+			}
 		}
 
 		PairReader fromReader = getNext(fromReaders, format, null);
@@ -185,7 +198,7 @@ public class LevelMerger {
 			}
 		}
 
-		try {			
+		try {
 			CompactWriter writer = new CompactWriter(level, execCR);
 			PairReader min = getNext(readers, level.getOpts().format, null);
 			while (min != null && min.getKey() != null) {

@@ -103,7 +103,7 @@ public class CompactWriter {
 					try {
 						curr = LevelFile.newFile(level.getCwd().toString(),
 								level.getOpts(), level.level(),
-								level.getLastLevelIndex());
+								level.getLastLevelIndex(), level.getFile());
 					} catch (Exception e1) {
 						e1.printStackTrace();
 					}

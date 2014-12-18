@@ -258,7 +258,7 @@ public class SortedLevelFile {
 		return false;
 	}
 
-	public byte[] get(byte[] k) {
+	public byte[] get(byte[] k) throws Exception {
 		byte[] ret = null;
 		for (MemtableSegment memtableSegment : segments) {
 			synchronized (memtableSegment) {
@@ -412,15 +412,9 @@ public class SortedLevelFile {
 
 	}
 
-	public void remove(LevelFile from) throws Exception {
+	public void delete(LevelFile from) throws Exception {
 		Level list = levels.get(from.getLevel());
-		if (list != null)
-			synchronized (list) {
-				if (list != null) {
-					list.remove(from);
-					list.notifyAll();
-				}
-			}
+		list.delete(from);
 	}
 
 	private void scheduleMemtable(final Memtable current, MemtableSegment seg) {
