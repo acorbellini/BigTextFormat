@@ -8,9 +8,10 @@ import java.util.concurrent.Future;
 import java.util.concurrent.ThreadFactory;
 
 public class MemtableSegment {
-	volatile Memtable current;
-	List<Future<Void>> fut = new ArrayList<Future<Void>>();
+	private volatile Memtable current;
+	private List<Future<Void>> fut = new ArrayList<Future<Void>>();
 	private ExecutorService exec;
+	private volatile Memtable old;
 
 	public MemtableSegment(int maxwriter) {
 		exec = Executors.newFixedThreadPool(maxwriter, new ThreadFactory() {
@@ -26,6 +27,7 @@ public class MemtableSegment {
 	}
 
 	public Memtable getCurrent() {
+		old = current;
 		return current;
 	}
 
@@ -39,5 +41,9 @@ public class MemtableSegment {
 
 	public void setCurrent(Memtable current) {
 		this.current = current;
+	}
+
+	public Memtable getOld() {
+		return old;
 	}
 }

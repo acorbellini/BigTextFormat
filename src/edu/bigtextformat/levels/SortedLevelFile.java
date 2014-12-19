@@ -240,9 +240,17 @@ public class SortedLevelFile {
 	}
 
 	public boolean contains(byte[] k) throws Exception {
-		synchronized (this) {
-			if (segments.contains(k))
-				return true;
+		
+		for (MemtableSegment memtableSegment : segments) {
+			synchronized (memtableSegment) {
+				if (memtableSegment.getCurrent().contains(k))
+					return true;
+				Memtable old = memtableSegment.getOld();
+				if (old != null) {
+					if (old.contains(k))
+						return true;
+				}
+			}
 		}
 
 		for (int i = 0; i <= getMaxLevel(); i++) {
@@ -254,10 +262,6 @@ public class SortedLevelFile {
 		return false;
 	}
 
-	public boolean exists(byte[] k) {
-		return false;
-	}
-
 	public byte[] get(byte[] k) throws Exception {
 		byte[] ret = null;
 		for (MemtableSegment memtableSegment : segments) {
@@ -265,6 +269,14 @@ public class SortedLevelFile {
 				byte[] inMemtable = memtableSegment.getCurrent().get(k);
 				if (inMemtable != null)
 					return inMemtable;
+
+				Memtable old = memtableSegment.getOld();
+				if (old != null) {
+					inMemtable = old.get(k);
+					if (inMemtable != null)
+						return inMemtable;
+				}
+
 			}
 		}
 
@@ -424,7 +436,6 @@ public class SortedLevelFile {
 				try {
 					current.closeLog();
 					writeLevel0(current, false);
-
 				} catch (IOException e) {
 					e.printStackTrace();
 				} catch (Exception e) {

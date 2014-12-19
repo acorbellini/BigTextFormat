@@ -289,7 +289,7 @@ public class Block implements DataType<Block> {
 		if (fixed && pos == -1) {
 			maxPayloadSize = length + OVERHEAD;
 		} else if (length > maxPayloadSize) {
-			maxPayloadSize = (int) (length * 2);
+			maxPayloadSize = length * 2 + OVERHEAD;
 		}
 	}
 }
