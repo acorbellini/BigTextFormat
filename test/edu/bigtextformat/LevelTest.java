@@ -138,7 +138,7 @@ public class LevelTest {
 
 	}
 
-	private static final boolean LOAD = true;
+	private static final boolean LOAD = false;
 
 	private static final boolean JUST_OPEN = false;
 }

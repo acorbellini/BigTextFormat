@@ -23,8 +23,8 @@ public class DataBlockReference implements DataBlock {
 	}
 
 	@Override
-	public boolean contains(byte[] k, BlockFormat format) {
-		return getDB().contains(k, format);
+	public boolean contains(byte[] k) {
+		return getDB().contains(k);
 	}
 
 	@Override
@@ -38,8 +38,8 @@ public class DataBlockReference implements DataBlock {
 	}
 
 	@Override
-	public byte[] get(byte[] k, BlockFormat format) {
-		return getDB().get(k, format);
+	public byte[] get(byte[] k) {
+		return getDB().get(k);
 	}
 
 	@Override
@@ -69,8 +69,8 @@ public class DataBlockReference implements DataBlock {
 
 	@Override
 	public Pair<byte[], byte[]> getFirstBetween(byte[] from, boolean inclFrom,
-			byte[] to, boolean inclTo, BlockFormat format) {
-		return getDB().getFirstBetween(from, inclFrom, to, inclTo, format);
+			byte[] to, boolean inclTo) {
+		return getDB().getFirstBetween(from, inclFrom, to, inclTo);
 	}
 
 	@Override

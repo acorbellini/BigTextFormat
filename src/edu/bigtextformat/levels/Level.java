@@ -171,9 +171,10 @@ public class Level implements Iterable<LevelFile> {
 
 			if (level > 0) {
 				int pos = search(k, files, file.getOpts().format);
-				// adjustment to find previous block.
+
 				if (pos < 0) {
 					pos = -(pos + 1);
+					// adjustment to find previous block.
 					if (pos > 0)
 						pos = pos - 1;
 				}

@@ -1,6 +1,9 @@
 package edu.bigtextformat.levels.datablock;
 
 import java.util.Arrays;
+import java.util.Comparator;
+import java.util.Map.Entry;
+import java.util.TreeMap;
 
 import edu.bigtextformat.block.BlockFormat;
 import edu.bigtextformat.levels.levelfile.LevelFile;
@@ -10,8 +13,12 @@ import edu.jlime.util.ByteBuffer;
 
 public class DataBlockImpl implements DataType<DataBlockImpl>, DataBlock {
 
+	private static final int MAX_SEARCH = 200;
+
 	// ByteArrayList keys = new ByteArrayList();
 	// ByteArrayList values = new ByteArrayList();
+
+	TreeMap<byte[], Integer> cache;
 
 	private LevelFile levelFile;
 
@@ -26,6 +33,8 @@ public class DataBlockImpl implements DataType<DataBlockImpl>, DataBlock {
 	private long size = 0;
 	private Long blockSize;
 
+	private BlockFormat format;
+
 	public DataBlockImpl(byte[] k, int[] ki, byte[] v, int[] vi) {
 		this.k_list = k;
 		this.k_index = ki;
@@ -34,10 +43,12 @@ public class DataBlockImpl implements DataType<DataBlockImpl>, DataBlock {
 		this.size = k.length + 4 + ki.length + 4 + v.length + 4 + vi.length + 4;
 	}
 
-	public DataBlockImpl(LevelFile levelFile2, long pos, long len) {
+	public DataBlockImpl(LevelFile levelFile2, long pos, long len,
+			BlockFormat format) {
 		this.levelFile = levelFile2;
 		this.blockPos = pos;
 		this.blockSize = len;
+		this.format = format;
 	}
 
 	// public synchronized void add(byte[] k, byte[] val) {
@@ -74,8 +85,8 @@ public class DataBlockImpl implements DataType<DataBlockImpl>, DataBlock {
 	 * edu.bigtextformat.block.BlockFormat)
 	 */
 	@Override
-	public boolean contains(byte[] k, BlockFormat format) {
-		int pos = search(k, format);
+	public boolean contains(byte[] k) {
+		int pos = search(k);
 		if (pos < 0)
 			return false;
 		return true;
@@ -106,12 +117,13 @@ public class DataBlockImpl implements DataType<DataBlockImpl>, DataBlock {
 		k_index = buff.getIntArray();
 		v_list = buff.getByteArray();
 		v_index = buff.getIntArray();
+
 		return this;
 	}
 
 	@Override
-	public byte[] get(byte[] k, BlockFormat format) {
-		int pos = search(k, format);
+	public byte[] get(byte[] k) {
+		int pos = search(k);
 		if (pos < 0)
 			return null;
 		return getValue(pos);
@@ -135,8 +147,8 @@ public class DataBlockImpl implements DataType<DataBlockImpl>, DataBlock {
 	 */
 	@Override
 	public Pair<byte[], byte[]> getFirstBetween(byte[] from, boolean inclFrom,
-			byte[] to, boolean inclTo, BlockFormat format) {
-		int pos = search(from, format);
+			byte[] to, boolean inclTo) {
+		int pos = search(from);
 		if (pos < 0) {
 			pos = -(pos + 1);
 		} else if (!inclFrom)
@@ -226,10 +238,30 @@ public class DataBlockImpl implements DataType<DataBlockImpl>, DataBlock {
 		return builder.toString();
 	}
 
-	private int search(byte[] k, BlockFormat format) {
+	private int search(byte[] k) {
+		int max = 0;
+		int min = 0;
+		TreeMap<byte[], Integer> cache = getCache();
+
+		if (cache.isEmpty()) {
+			max = k_index.length - 1;
+			min = 0;
+		} else {
+			Entry<byte[], Integer> ceilingEntry = cache.ceilingEntry(k);
+			if (ceilingEntry != null) {
+				max = ceilingEntry.getValue();
+				min = max - MAX_SEARCH;
+			} else {
+				max = k_index.length - 1;
+				Entry<byte[], Integer> lastEntry = cache.lastEntry();
+				if(lastEntry==null)
+					System.out.println("what?");
+				min = lastEntry.getValue() + 1;
+			}
+		}
 		boolean found = false;
-		int lo = 0;
-		int hi = k_index.length - 1;
+		int lo = min;
+		int hi = max;
 		int cont = 0;
 		while (lo <= hi && !found) {
 			int mid = lo + (hi - lo) / 2;
@@ -249,6 +281,27 @@ public class DataBlockImpl implements DataType<DataBlockImpl>, DataBlock {
 		if (!found)
 			cont = -cont - 1;
 		return cont;
+	}
+
+	private TreeMap<byte[], Integer> getCache() {
+		if (cache == null) {
+			synchronized (this) {
+				if (cache == null) {
+					this.cache = new TreeMap<>(new Comparator<byte[]>() {
+						@Override
+						public int compare(byte[] arg0, byte[] arg1) {
+							return DataBlockImpl.this.format
+									.compare(arg0, arg1);
+						}
+					});
+					int cacheSize = (k_index.length - 1) / MAX_SEARCH;
+					for (int i = 1; i <= cacheSize; i++) {
+						cache.put(getKey(i * MAX_SEARCH), i * MAX_SEARCH);
+					}
+				}
+			}
+		}
+		return cache;
 	}
 
 	public void setBlockPos(Long pos) {

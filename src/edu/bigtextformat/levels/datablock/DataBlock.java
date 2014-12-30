@@ -6,20 +6,20 @@ import edu.bigtextformat.util.Pair;
 
 public interface DataBlock {
 
-	public abstract boolean contains(byte[] k, BlockFormat format);
+	public abstract boolean contains(byte[] k);
 
 	public abstract byte[] firstKey();
 
 	public abstract DataBlock fromByteArray(byte[] data) throws Exception;
 
-	public abstract byte[] get(byte[] k, BlockFormat format);
+	public abstract byte[] get(byte[] k);
 
 	public abstract Long getBlockPos();
 
 	public abstract LevelFile getFile();
 
 	public abstract Pair<byte[], byte[]> getFirstBetween(byte[] from,
-			boolean inclFrom, byte[] to, boolean inclTo, BlockFormat format);
+			boolean inclFrom, byte[] to, boolean inclTo);
 
 	public abstract byte[] getKey(int i);
 

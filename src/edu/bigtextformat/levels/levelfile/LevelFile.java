@@ -162,8 +162,8 @@ public class LevelFile {
 	}
 
 	public synchronized void close() throws Exception {
-		if (cache != null)
-			cache = null;
+		// if (cache != null)
+		// cache = null;
 		wl.lock();
 		try {
 			if (file != null)
@@ -212,7 +212,7 @@ public class LevelFile {
 		if (pos < 0)
 			return false;
 		DataBlock db = getDataBlock(pos, true);
-		if (db.contains(k, format))
+		if (db.contains(k))
 			return true;
 		return false;
 	}
@@ -250,7 +250,7 @@ public class LevelFile {
 		if (pos < 0)
 			return null;
 		DataBlock db = getDataBlock(pos, true);
-		return db.get(k, format);
+		return db.get(k);
 	}
 
 	public int getCont() {
@@ -310,7 +310,7 @@ public class LevelFile {
 			Long bPos = (Long) it.next();
 			DataBlock db = getDataBlock(bPos, true);
 			Pair<byte[], byte[]> pair = db.getFirstBetween(from, inclFrom, to,
-					inclTo, getOpts().format);
+					inclTo);
 			if (pair != null)
 				return pair;
 		}
@@ -351,7 +351,8 @@ public class LevelFile {
 			try {
 				for (Block block : getFile()) {
 					DataBlockImpl db = new DataBlockImpl(this, block.getPos(),
-							block.size()).fromByteArray(block.payload());
+							block.size(), getOpts().format).fromByteArray(block
+							.payload());
 					list.add(db);
 				}
 			} catch (Exception e) {
@@ -562,7 +563,7 @@ public class LevelFile {
 		if (b.getNextBlockPos() == length)
 			throw new Exception("Trying to read index position.");
 		DataBlock block = new DataBlockImpl(LevelFile.this, b.getPos(),
-				b.size()).fromByteArray(b.payload());
+				b.size(), getOpts().format).fromByteArray(b.payload());
 		return block;
 	}
 

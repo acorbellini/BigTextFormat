@@ -29,7 +29,7 @@ import edu.jlime.util.compression.CompressionType;
 
 public class Manifest {
 
-	private static final long MAGIC = DataTypeUtils.byteArrayToLong("MANIFEST"
+	public static final long MAGIC = DataTypeUtils.byteArrayToLong("MANIFEST"
 			.getBytes());
 	private static final int READ = 0;
 	private static final int APPEND = 1;
