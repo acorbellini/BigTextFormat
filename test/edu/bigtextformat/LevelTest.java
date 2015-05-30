@@ -50,14 +50,16 @@ public class LevelTest {
 		LevelOptions opts = new LevelOptions().setFormat(format)
 				.setSegmentWriters(5).setMemTableSize(8 * 1024 * 1024)
 				.setBaseSize(2 * 1024 * 1024).setMaxLevel0Files(4)
+				.setMaxCompactionWriters(4).setMaxCompactorThreads(4)
 				.setCompactLevel0Threshold(4).setMaxLevelFiles(10)
-				.setMaxBlockSize(512 * 1024)
+				.setMaxBlockSize(8 * 1024)
 				// .setAppendOnly(true)
 				.setCompressed(CompressionType.SNAPPY.getComp());
 		SortedLevelFile file = SortedLevelFile.open(PATH, opts);
 
+		file.compact();
+
 		if (JUST_OPEN) {
-			file.compact();
 			file.close();
 			return;
 		}
@@ -95,11 +97,11 @@ public class LevelTest {
 
 			// System.out.println(file.print());
 
-			System.out.println("Compacting...");
-			long initCompact = System.currentTimeMillis();
-			file.compact();
-			System.out.println("Compact time: "
-					+ (System.currentTimeMillis() - initCompact));
+			// System.out.println("Compacting...");
+			// long initCompact = System.currentTimeMillis();
+			// file.compact();
+			// System.out.println("Compact time: "
+			// + (System.currentTimeMillis() - initCompact));
 
 			// System.out.println(file.print());
 
@@ -135,10 +137,9 @@ public class LevelTest {
 		System.out.println("Closing...");
 		file.close();
 		// }
-
 	}
 
-	private static final boolean LOAD = false;
+	private static final boolean LOAD = true;
 
 	private static final boolean JUST_OPEN = false;
 }

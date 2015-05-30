@@ -4,39 +4,42 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.Iterator;
+import java.util.Arrays;
 
-import edu.bigtextformat.block.Block;
-import edu.bigtextformat.block.BlockFile;
-import edu.bigtextformat.block.BlockFileOptions;
-import edu.jlime.util.DataTypeUtils;
+import edu.bigtextformat.raw.RawFile;
 
-public class LogFile implements Iterable<byte[]> {
+public class LogFile
+// implements Iterable<byte[]>
+{
 
-	private static final long MAGIC = DataTypeUtils.byteArrayToLong("LOGFILE_"
-			.getBytes());
+	private static final byte[] MAGIC = "LOGFILE_".getBytes();
 	private static final int READ = 0;
 	private static final int APPEND = 1;
-	private BlockFile file;
+	private RawFile file;
 	private String p;
 	private String name;
 	private int mode = -1;
 
+	public RawFile getFile() {
+		return file;
+	}
+
 	public LogFile(File filename) throws Exception {
 		this.p = filename.getPath();
 		this.name = filename.getName();
+
 	}
 
-	public void append(byte[] opAsBytes) throws Exception {
-		file.newFixedBlock(opAsBytes);
+	public void append(byte[]... toWrite) throws Exception {
+		file.append(toWrite);
 	}
 
-	public void appendMode() throws Exception {
+	public void appendMode(boolean syncmem) throws Exception {
 		if (mode == APPEND)
 			return;
 		if (file != null)
 			file.close();
-		file = createLog(p);
+		file = createLog(p, syncmem);
 		mode = APPEND;
 	}
 
@@ -46,11 +49,14 @@ public class LogFile implements Iterable<byte[]> {
 		file = null;
 	}
 
-	private BlockFile createLog(String path) throws Exception {
-		return BlockFile.create(path, new BlockFileOptions().setMagic(MAGIC)
-				.setEnableCache(false).setAppendOnly(true)
+	private RawFile createLog(String path, boolean syncmem) throws Exception {
+		RawFile file = new RawFile(path, false, false, true, syncmem);
+		file.write(MAGIC);
+		return file;
+		// return BlockFile.create(path, new BlockFileOptions().setMagic(MAGIC)
+		// .setEnableCache(false).setAppendOnly(true), null
 		// .setComp(CompressionType.SNAPPY.getComp())
-				);
+		// );
 	}
 
 	public synchronized void delete() throws IOException {
@@ -61,7 +67,7 @@ public class LogFile implements Iterable<byte[]> {
 	}
 
 	public void flush() throws IOException {
-		file.flush();
+		file.sync();
 	}
 
 	public byte[] get(byte[] k) throws Exception {
@@ -74,51 +80,55 @@ public class LogFile implements Iterable<byte[]> {
 	}
 
 	public boolean isEmpty() throws Exception {
-		return file.isEmpty();
+		return file.length() == 0;
 	}
 
-	@Override
-	public Iterator<byte[]> iterator() {
-		try {
-			readMode();
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
+	//
+	// @Override
+	// public Iterator<byte[]> iterator() {
+	// try {
+	// readMode();
+	// } catch (Exception e) {
+	// e.printStackTrace();
+	// }
+	//
+	// if (file == null)
+	// return null;
+	//
+	// final Iterator<Block> it = file.iterator();
+	// return new Iterator<byte[]>() {
+	//
+	// @Override
+	// public boolean hasNext() {
+	// return it.hasNext();
+	// }
+	//
+	// @Override
+	// public byte[] next() {
+	// return it.next().payload();
+	// }
+	//
+	// @Override
+	// public void remove() {
+	//
+	// }
+	//
+	// };
+	//
+	// }
 
-		if (file == null)
-			return null;
-
-		final Iterator<Block> it = file.iterator();
-		return new Iterator<byte[]>() {
-
-			@Override
-			public boolean hasNext() {
-				return it.hasNext();
-			}
-
-			@Override
-			public byte[] next() {
-				return it.next().payload();
-			}
-
-			@Override
-			public void remove() {
-
-			}
-
-		};
-
-	}
-
-	synchronized void readMode() throws Exception {
+	public synchronized void readMode() throws Exception {
 		if (mode == READ)
 			return;
 		close();
-		file = BlockFile.open(p, MAGIC);
+		file = new RawFile(p, false, true, false, false);
+		byte[] magic = file.readBytes(0, 8);
+		if (!Arrays.equals(magic, MAGIC))
+			throw new Exception("LogFile magic numbers do not match.");
 		mode = READ;
 	}
 
 	public long size() throws Exception {
-		return file.size();
+		return file.length();
 	}
 }

@@ -29,11 +29,9 @@ public class BlockFileTest {
 
 	private void test() throws Exception {
 		long magic = DataTypeUtils.byteArrayToLong("ABLKFILE".getBytes());
-		final BlockFile file = BlockFile.create(
-				"blocktest.b",
-				new BlockFileOptions().setHeaderSize(100).setMinSize(16)
-						.setMagic(magic)
-						.setComp(CompressionType.SNAPPY.getComp()));
+		final BlockFile file = BlockFile.create("blocktest.b",
+				new BlockFileOptions().setHeaderSize(100).setMagic(magic)
+						.setComp(CompressionType.SNAPPY.getComp()), null);
 
 		String[] test = new String[] { "Chorioactis is a genus of fungus that contains the single species Chorioactis geaster, an extremely rare mushroom found only  "
 				+ "in select locales in Texas and Japan. In the former, it is commonly known as the devil's cigar or the Texas star in Japan it is called kirinomitake. It is notable for its unusual appearance. "
@@ -62,10 +60,9 @@ public class BlockFileTest {
 					@Override
 					public void run() {
 						try {
-							Block b = file.newBlock(Integer.valueOf(toPrint)
-									.toString().getBytes());
-							b.setPayload((toPrint + " Todo cambiado!!! 0123456789ABCDEF jeje")
-									.getBytes());
+							file.newBlock(
+									(toPrint + " Todo cambiado!!! 0123456789ABCDEF jeje")
+											.getBytes(), false);
 						} catch (Exception e) {
 							e.printStackTrace();
 						}
@@ -77,14 +74,14 @@ public class BlockFileTest {
 			// Block b1 = file.newBlock("Hola!".getBytes());
 			// b1.setPayload("Hola! que tal? como va? todo bien?".getBytes());
 		} else {
-			System.out.println("Is not empty");
-
-			for (Block b : file) {
-				if (b.isDeleted())
-					System.out.print("DELETED : ");
-				System.out.println(new String(b.payload()));
-				// System.out.println(DataTypeUtils.byteArrayToInt(b.payload()));
-			}
+			// System.out.println("Is not empty");
+			//
+			// for (Block b : file) {
+			// if (b.isDeleted())
+			// System.out.print("DELETED : ");
+			// System.out.println(new String(b.payload()));
+			// System.out.println(DataTypeUtils.byteArrayToInt(b.payload()));
+			// }
 		}
 		// long oldPos = b1.getPos();
 		// b1.setPayload("hola como vas? todo bien????".getBytes());

@@ -5,8 +5,6 @@ import edu.jlime.util.compression.Compressor;
 public class BlockFileOptions {
 	int headerSize = 128;
 
-	int minSize = 16;
-
 	long magic = 0L;
 
 	Compressor comp = null;
@@ -18,19 +16,19 @@ public class BlockFileOptions {
 	boolean appendOnly = false;
 
 	boolean sync = false;
-	
+
 	boolean enableCache = true;
-	
+
 	public BlockFileOptions setAppendOnly(boolean appendOnly) {
 		this.appendOnly = appendOnly;
 		return this;
 	}
-	
+
 	public BlockFileOptions setComp(Compressor comp) {
 		this.comp = comp;
 		return this;
 	}
-	
+
 	public BlockFileOptions setEnableCache(boolean enableCache) {
 		this.enableCache = enableCache;
 		return this;
@@ -43,11 +41,6 @@ public class BlockFileOptions {
 
 	public BlockFileOptions setMagic(long magic) {
 		this.magic = magic;
-		return this;
-	}
-
-	public BlockFileOptions setMinSize(int minSize) {
-		this.minSize = minSize;
 		return this;
 	}
 

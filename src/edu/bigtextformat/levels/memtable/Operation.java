@@ -1,9 +1,9 @@
 package edu.bigtextformat.levels.memtable;
 
-import edu.bigtextformat.record.DataType;
-import edu.jlime.util.ByteBuffer;
 
-public class Operation implements DataType<Operation> {
+public class Operation
+// implements DataType<Operation> 
+{
 	OperationType op;
 	byte[] k = new byte[] {};
 	byte[] v = new byte[] {};
@@ -18,21 +18,21 @@ public class Operation implements DataType<Operation> {
 		this.v = v;
 	}
 
-	@Override
-	public Operation fromByteArray(byte[] data) throws Exception {
-		ByteBuffer buff = new ByteBuffer(data);
-		this.op = OperationType.fromID(buff.get());
-		this.k = buff.getByteArray();
-		this.v = buff.getByteArray();
-		return this;
-	}
-
-	public byte[] toByteArray() {
-		ByteBuffer buff = new ByteBuffer();
-		buff.put(op.getId());
-		buff.putByteArray(k);
-		buff.putByteArray(v);
-		return buff.build();
-	}
+	// @Override
+	// public Operation fromByteArray(byte[] data) throws Exception {
+	// ByteBuffer buff = new ByteBuffer(data);
+	// this.op = OperationType.fromID(buff.get());
+	// this.k = buff.getByteArray();
+	// this.v = buff.getByteArray();
+	// return this;
+	// }
+	//
+	// public byte[] toByteArray() {
+	// ByteBuffer buff = new ByteBuffer();
+	// buff.put(op.getId());
+	// buff.putByteArray(k);
+	// buff.putByteArray(v);
+	// return buff.build();
+	// }
 
 }

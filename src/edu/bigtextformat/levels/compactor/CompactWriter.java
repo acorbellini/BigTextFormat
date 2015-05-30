@@ -57,9 +57,8 @@ public class CompactWriter {
 		if (currSize > level.getOpts().baseSize
 				|| (level.level() > 0 && minKey != null && level.getFile()
 						.getLevel(level.level() + 1)
-						.intersectSize(minKey, maxKey) >= level.getOpts().intersectSplit)) {
+						.intersectSize(minKey, maxKey) >= level.getOpts().intersectSplit))
 			flushDBS();
-		}
 	}
 
 	public void addDataBlock(DataBlock dataBlock) throws Exception {
@@ -118,7 +117,7 @@ public class CompactWriter {
 								size += dataBlock.size();
 								long diff = (System.currentTimeMillis() - time);
 								if (size / ((float) diff) > rate) { // 10MB per
-																	// sec
+									// sec
 									long l = (long) ((size / (float) rate) - diff);
 									// System.out.println("Current rate exceeded "
 									// + (size / ((float) diff)) + " waiting " +

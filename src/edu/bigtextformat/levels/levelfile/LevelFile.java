@@ -1,14 +1,15 @@
 package edu.bigtextformat.levels.levelfile;
 
 import java.io.File;
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.UUID;
@@ -18,7 +19,7 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-import javax.swing.text.DefaultEditorKit.CopyAction;
+import org.apache.log4j.Logger;
 
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
@@ -44,22 +45,21 @@ public class LevelFile {
 
 	private static BlockFile createBlockFile(String path, LevelOptions opts)
 			throws Exception {
-		return BlockFile.create(
-				path,
-				new BlockFileOptions()
-						.setHeaderSize(512)
-						.setMinSize(512)
-						.setAppendOnly(true)
-						.setMagic(
-								DataTypeUtils.byteArrayToLong("SSTTABLE"
-										.getBytes())).setComp(opts.comp));
+		BlockFileOptions blockopts = new BlockFileOptions().setHeaderSize(512)
+				.setAppendOnly(true)
+				.setMagic(DataTypeUtils.byteArrayToLong("SSTTABLE".getBytes()))
+				.setComp(opts.comp);
+		Map<String, byte[]> header = new HashMap<>();
+		header.put("opts", opts.toByteArray());
+		return BlockFile.create(path, blockopts, header);
 	}
 
 	public static LevelFile newFile(String dir, LevelOptions opts, int level,
 			int cont, SortedLevelFile db) throws Exception {
 		String path = SortedLevelFile.getTempPath(dir, level, cont);
+
 		BlockFile bf = createBlockFile(path, opts);
-		bf.getHeader().putData("opts", opts.toByteArray());
+
 		LevelFile lf = new LevelFile(new File(path), level, cont, null, null,
 				db);
 		lf.setFile(bf);
@@ -79,6 +79,8 @@ public class LevelFile {
 		return BlockFile.open(path,
 				DataTypeUtils.byteArrayToLong("SSTTABLE".getBytes()));
 	}
+
+	private Logger log = Logger.getLogger(LevelFile.class);
 
 	private static Timer timer = new Timer("LevelFile close daemon", true);
 
@@ -153,8 +155,8 @@ public class LevelFile {
 				if (cache == null) {
 					cache = CacheBuilder.newBuilder()
 							.maximumSize(MAX_CACHE_SIZE)
-							.expireAfterAccess(1000, TimeUnit.SECONDS)
-							.softValues().build();
+							.expireAfterAccess(500, TimeUnit.MILLISECONDS)
+							.build();
 				}
 			}
 		}
@@ -183,7 +185,7 @@ public class LevelFile {
 	public void commit() throws Exception {
 		getIndex().setMinKey(minKey);
 		getIndex().setMaxKey(maxKey);
-		getFile().newFixedBlock(getIndex().toByteArray());
+		getFile().newBlock(getIndex().toByteArray(), true);
 		getFile().close();
 		fixedIndex = null;
 		synchronized (stateLock) {
@@ -329,11 +331,12 @@ public class LevelFile {
 					try {
 						payload = getFile().getLastBlock().payload();
 					} catch (Exception e) {
-
+						e.printStackTrace();
 					} finally {
 						rl.unlock();
 					}
 					if (payload == null) {
+						log.info("Starting recovery of file " + path);
 						recovery();
 						payload = getFile().getLastBlock().payload();
 					}
@@ -544,7 +547,7 @@ public class LevelFile {
 					dataBlock.getLen());
 			otherFile.rl.unlock();
 		} else {
-			Block b = getFile().newFixedBlock(dataBlock.toByteArray());
+			Block b = getFile().newBlock(dataBlock.toByteArray(), true);
 			pos = b.getPos();
 		}
 		getIndex().put(dataBlock.lastKey(), pos, getOpts().format);
@@ -555,7 +558,7 @@ public class LevelFile {
 		Block b;
 		long length;
 		try {
-			b = getFile().getBlock(pos, false);
+			b = getFile().getBlock(pos);
 			length = getFile().length();
 		} finally {
 			rl.unlock();

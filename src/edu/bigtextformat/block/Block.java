@@ -14,20 +14,6 @@ import edu.jlime.util.compression.Compressor;
 
 public class Block implements DataType<Block> {
 
-	public static Block create(BlockFile blockFile, int minSize)
-			throws Exception {
-		return new Block(blockFile, -1, minSize, -1);
-	}
-
-	public static Block read(BlockFile blockFile, long pos) throws Exception {
-		RawFile raw = blockFile.getRawFile();
-		int blockSize = raw.readInt(pos + 8);
-		byte[] data = new byte[blockSize];
-		raw.read(pos, data);
-		return new Block(blockFile, pos, 16, pos + blockSize)
-				.fromByteArray(data);
-	}
-
 	public static void setDeleted(RawFile f, byte status, long pos2)
 			throws Exception {
 		f.writeByte(pos2 + 8 + 4, status);
@@ -46,37 +32,33 @@ public class Block implements DataType<Block> {
 
 	private static final long ESCAPE_MAGIC = DataTypeUtils
 			.byteArrayToLong(ESCAPE_MAGIC_AS_BYTES);
+
 	private static final long BLOCK_MAGIC_END = DataTypeUtils
 			.byteArrayToLong(BLOCK_MAGIC_END_AS_BYTES);
+
 	private static final int OVERHEAD = 8 + 4 + 1 + (1 + 4 + 4 + 8) + 4 + 8;
-	long pos = -1;
 
-	BlockFile file;
-
-	private boolean deleted = false;
-	private boolean fixed = false;
-
-	private boolean memoryMapped = false;
+	private Logger log = Logger.getLogger(Block.class);
 
 	private byte[] p = new byte[] {};
 
 	long checksum;
 
-	private int maxPayloadSize;
-
-	private long nextBlockPos;
-
-	private java.nio.ByteBuffer mappedBuffer;
-
 	private Compressor comp;
-	private int origSize = 128;
-	private Logger log = Logger.getLogger(Block.class);
 
-	public Block(BlockFile blockFile, long pos, int minSize, long next) {
+	private int payloadSize;
+
+	private long pos;
+	private int effectiveSize;
+
+	public Block(byte[] payload, Compressor comp) {
+		this.comp = comp;
+		this.p = payload;
+	}
+
+	public Block(long pos, int size) {
 		this.pos = pos;
-		this.nextBlockPos = next;
-		this.maxPayloadSize = minSize;
-		this.file = blockFile;
+		this.effectiveSize = size;
 	}
 
 	@Override
@@ -92,19 +74,16 @@ public class Block implements DataType<Block> {
 			throw new Exception("Invalid Block Width");
 
 		byte status = buffer.get();
-		deleted = ((status & 0x1) == 0x1);
-		fixed = ((status & 0x2) == 0x2);
 
 		// byte[] escaped = outer.getByteArray();
 
-		this.maxPayloadSize = data.length;
 		byte compType = buffer.get();
 		if (compType != -1) {
 			comp = CompressionType.getByID(compType);
 		}
 
 		if (magic == BLOCK_MAGIC_V2)
-			this.origSize = buffer.getInt();
+			this.payloadSize = buffer.getInt();
 
 		p = buffer.getByteArray();
 		checksum = buffer.getLong();
@@ -122,157 +101,37 @@ public class Block implements DataType<Block> {
 		}
 		if (checksum != getCheckSum(p))
 			throw new Exception("Different checksums");
+
+		this.p = comp == null ? p : comp.uncompress(p, payloadSize);
+
 		return this;
-	}
-
-	public long getCheckSum(byte[] b) {
-		Checksum crc = new CRC32();
-		crc.update(b, 0, b.length);
-		return crc.getValue();
-	}
-
-	public BlockFile getFile() {
-		return file;
-	}
-
-	public int getMinSize() {
-		return maxPayloadSize;
-	}
-
-	public long getNextBlockPos() {
-		return nextBlockPos;
-	}
-
-	public long getPos() {
-		return pos;
-	}
-
-	private Byte getStatus() {
-		byte status = (byte) ((deleted ? 0x1 : 0x0) | (fixed ? 0x2 : 0x0));
-		return status;
-	}
-
-	public boolean isDeleted() {
-		return deleted;
-	}
-
-	public boolean isFixed() {
-		return fixed;
-	}
-
-	public boolean isMemoryMapped() {
-		return memoryMapped;
-	}
-
-	public byte[] payload() {
-		if (comp != null)
-			return comp.uncompress(p, origSize);
-		return p;
-	}
-
-	public int payloadSize() {
-		if (p == null)
-			return 0;
-		return p.length;
-	}
-
-	public void persist(byte[] bytes) throws Exception {
-		if (pos == -1) {
-			long pos = file.reserve(bytes.length);
-			setPos(pos, pos + bytes.length);
-		}
-		if (!memoryMapped)
-			file.writeBlock(pos, this, bytes);
-		else {
-			if (mappedBuffer == null) {
-				mappedBuffer = file.getRawFile().memMap(pos, nextBlockPos);
-			}
-			mappedBuffer.clear();
-			mappedBuffer.put(bytes);
-		}
-	}
-
-	public void setCompressed(Compressor comp) {
-		this.comp = comp;
-	}
-
-	public void setDeleted(boolean deleted) {
-		this.deleted = deleted;
-	}
-
-	public void setFixed(boolean f) {
-		this.fixed = f;
-	}
-
-	public void setMemoryMapped(boolean memoryMapped) {
-		this.memoryMapped = memoryMapped;
-	}
-
-	public void setPayload(byte[] newPayload) throws Exception {
-		long oldpos = pos;
-		byte[] oldPayload = p;
-		int origSizeOld = origSize;
-		byte[] payload = newPayload;
-		this.origSize = payload.length;
-		if (comp != null)
-			payload = comp.compress(newPayload);
-
-		updateMaxSize(payload.length);
-
-		this.p = payload;
-		byte[] bytes = toByteArray();
-		if (pos != -1 && bytes.length > size()) {
-			if (fixed) {
-				this.p = oldPayload;
-				this.origSize = origSizeOld;
-				throw new Exception("Can't expand fixed block from " + size()
-						+ " to " + bytes.length);
-			}
-			file.removeBlock(oldpos, size(), (byte) (getStatus() | 0x1));
-			this.pos = -1;
-		}
-
-		persist(bytes);
-
-		if (oldpos != -1 && pos != oldpos) {
-			file.notifyPosChanged(this, oldpos);
-		}
-
-	}
-
-	public void setPos(long pos, long next) {
-		this.pos = pos;
-		this.nextBlockPos = next;
-	}
-
-	public long size() {
-		return getNextBlockPos() - getPos();
 	}
 
 	@Override
 	public byte[] toByteArray() {
+		int payloadSize = p.length;
 
-		int max = OVERHEAD + p.length;
-		if (maxPayloadSize > max)
-			max = maxPayloadSize;
+		byte[] compressedPayload = p;
 
+		if (comp != null)
+			compressedPayload = comp.compress(p);
+
+		int max = OVERHEAD + compressedPayload.length;
 		ByteBuffer ret = new ByteBuffer(max);
 		ret.putLong(BLOCK_MAGIC_V2); // 8
 		ret.putInt(max); // Width
-		ret.put(getStatus()); // 1
+		ret.put((byte) 0); // 1
 
 		if (comp != null)
 			ret.put(comp.getType().getId());
 		else
 			ret.put((byte) -1);
 
-		ret.putInt(origSize);
+		ret.putInt(payloadSize);
 
-		ret.putByteArray(p);// NDATA
-		ret.putLong(getCheckSum(p)); // 8
+		ret.putByteArray(compressedPayload);// NDATA
+		ret.putLong(getCheckSum(compressedPayload)); // 8
 
-		int pad = maxPayloadSize - 4 - 8;
-		ret.padTo(pad);
 		int otherMax = ret.size() + 4 + 8;
 		ret.putInt(otherMax); // 4 Width
 		ret.putLong(BLOCK_MAGIC_END); // 8
@@ -285,11 +144,34 @@ public class Block implements DataType<Block> {
 		return build;
 	}
 
-	private void updateMaxSize(int length) {
-		if (fixed && pos == -1) {
-			maxPayloadSize = length + OVERHEAD;
-		} else if (length > maxPayloadSize) {
-			maxPayloadSize = length * 2 + OVERHEAD;
-		}
+	public long getCheckSum(byte[] b) {
+		Checksum crc = new CRC32();
+		crc.update(b, 0, b.length);
+		return crc.getValue();
+	}
+
+	public byte[] payload() {
+		return p;
+	}
+
+	public int payloadSize() {
+		return p.length;
+	}
+
+	public void written(long pos, int length) {
+		this.pos = pos;
+		this.effectiveSize = length;
+	}
+
+	public int size() {
+		return effectiveSize;
+	}
+
+	public long getNextBlockPos() {
+		return pos + effectiveSize;
+	}
+
+	public long getPos() {
+		return pos;
 	}
 }

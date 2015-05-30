@@ -55,12 +55,14 @@ public class Manifest {
 		} catch (Exception e) {
 		}
 		if (log == null || log.isEmpty()) {
-			if (log != null && log.isEmpty())
+			if (log != null && log.isEmpty()) {
+				log.close();
 				log.delete();
-
+			}
 			Path old = Paths.get(fDir.getPath() + "/MANIFEST.log.old");
 			if (Files.exists(old)) {
-				Files.move(old, Paths.get(path));
+				Files.move(old, Paths.get(path),
+						StandardCopyOption.REPLACE_EXISTING);
 				readMode();
 			} else {
 				appendMode();
@@ -185,7 +187,7 @@ public class Manifest {
 				path,
 				new BlockFileOptions().setMagic(MAGIC).setEnableCache(false)
 						.setAppendOnly(true)
-						.setComp(CompressionType.SNAPPY.getComp()));
+						.setComp(CompressionType.SNAPPY.getComp()), null);
 	}
 
 	public Collection<LevelFile> getFiles() throws IOException, Exception {
@@ -219,7 +221,7 @@ public class Manifest {
 		buff.putByteArray(minKey);
 		buff.putByteArray(maxKey);
 		synchronized (this) {
-			current.newFixedBlock(buff.build());
+			current.newBlock(buff.build(), true);
 		}
 	}
 

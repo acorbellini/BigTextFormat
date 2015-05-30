@@ -19,6 +19,7 @@ import edu.jlime.util.DataTypeUtils;
 public class RawFile {
 	private FileChannel f;
 	private Path p;
+	private int currentPos = 0;
 
 	public RawFile(String path, boolean trunc, boolean readOnly,
 			boolean appendOnly, boolean sync) throws IOException {
@@ -39,7 +40,7 @@ public class RawFile {
 		if (trunc)
 			opts.add(StandardOpenOption.TRUNCATE_EXISTING);
 		if (sync)
-			opts.add(StandardOpenOption.SYNC);
+			opts.add(StandardOpenOption.DSYNC);
 
 		this.f = FileChannel.open(p, opts);
 	}
@@ -101,7 +102,7 @@ public class RawFile {
 		f.read(buff, pos);
 	}
 
-	public void sync() throws IOException {
+	public synchronized void sync() throws IOException {
 		f.force(false);
 	}
 
@@ -135,5 +136,17 @@ public class RawFile {
 	public long readLong(long i) throws Exception {
 		byte[] l = readBytes(i, 8);
 		return DataTypeUtils.byteArrayToLong(l);
+	}
+
+	public void write(byte[] ba) throws Exception {
+		write(currentPos, ba);
+		currentPos += ba.length;
+	}
+
+	public synchronized void append(byte[][] toWrite) throws IOException {
+		ByteBuffer[] buffs = new ByteBuffer[toWrite.length];
+		for (int i = 0; i < toWrite.length; i++)
+			buffs[i] = ByteBuffer.wrap(toWrite[i]);
+		f.write(buffs);
 	}
 }

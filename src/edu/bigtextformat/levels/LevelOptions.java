@@ -19,7 +19,7 @@ public class LevelOptions implements DataType<LevelOptions> {
 
 	// Block and File Size
 	public int baseSize = 512 * 1024; // 512k
-	public int maxBlockSize = 64 * 1024; // 64k
+	public int maxBlockSize = 8 * 1024; // 64k
 	public int maxSegmentWriters = 2;
 
 	// Level Options
@@ -32,13 +32,16 @@ public class LevelOptions implements DataType<LevelOptions> {
 	public int maxMergeElements = 4;
 	public int maxCompactorThreads = 4;
 	public int maxCompactionWriters = 4;
-	public int compactTrottle = (int) (512 * 1024f / 1000);
+	public int compactTrottle = (int) (10 * 1024 * 1024f / 1000); // 10MB per
+																	// sec
 
-	//Recovery Options
+	// Recovery Options
 	public int recoveryWriters = 10;
 	public int recoveryThreads = 10;
 
 	public int recoveryMaxIntersect = 1000;
+
+	public boolean syncmem = false;
 
 	@Override
 	public LevelOptions fromByteArray(byte[] data) throws Exception {
@@ -149,7 +152,7 @@ public class LevelOptions implements DataType<LevelOptions> {
 		this.recoveryWriters = recoveryWriters;
 		return this;
 	}
-	
+
 	public LevelOptions setRecoveryMaxIntersect(int recoveryMaxIntersect) {
 		this.recoveryMaxIntersect = recoveryMaxIntersect;
 		return this;
@@ -174,5 +177,10 @@ public class LevelOptions implements DataType<LevelOptions> {
 		else
 			buff.put((byte) -1);
 		return buff.build();
+	}
+
+	public LevelOptions setSyncMemtable(boolean b) {
+		this.syncmem = b;
+		return this;
 	}
 }

@@ -35,10 +35,11 @@ public class Merger {
 						+ "/MANIFEST.log",
 						new BlockFileOptions().setMagic(Manifest.MAGIC)
 								.setEnableCache(false).setAppendOnly(true)
-								.setComp(CompressionType.SNAPPY.getComp()));
+								.setComp(CompressionType.SNAPPY.getComp()),
+						null);
 
 				for (Block block : fromManifest) {
-					toManifest.newFixedBlock(block.payload());
+					toManifest.newBlock(block.payload(), true);
 				}
 				toManifest.close();
 				fromManifest.close();

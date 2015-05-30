@@ -11,6 +11,7 @@ import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map.Entry;
+import java.util.Timer;
 import java.util.TreeMap;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
@@ -23,6 +24,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
+import org.apache.log4j.Logger;
+
 import edu.bigtextformat.block.BlockFormat;
 import edu.bigtextformat.levels.compactor.CompactWriter;
 import edu.bigtextformat.levels.compactor.Compactor;
@@ -34,6 +37,9 @@ import edu.bigtextformat.util.LogFile;
 import edu.bigtextformat.util.Pair;
 
 public class SortedLevelFile {
+
+	Logger log = Logger.getLogger(SortedLevelFile.class);
+
 	public static String getMergedPath(String dir, int level, int cont) {
 		return dir + "/" + level + "-" + cont + ".sst.merged";
 	}
@@ -58,8 +64,10 @@ public class SortedLevelFile {
 		FileLock lock = FileChannel.open(Paths.get(dir + "/.lock"),
 				StandardOpenOption.CREATE, StandardOpenOption.WRITE,
 				StandardOpenOption.READ).tryLock();
+
 		if (lock == null)
 			throw new Exception("Database locked");
+
 		File[] files = fDir.listFiles();
 		List<File> memtables = new ArrayList<>();
 		for (File file : files) {
@@ -78,19 +86,22 @@ public class SortedLevelFile {
 		}
 
 		ret = new SortedLevelFile(fDir, opts);
+
 		ret.fLock = lock;
+
 		if (ret != null) {
 
 			ret.recovery();
 			ret.start();
 
 			for (File path : memtables) {
+				Memtable mem = null;
 				try {
-					Memtable mem = Memtable.fromFile(path, opts);
+					mem = Memtable.fromFile(path, opts, ret.memtabletimer);
 					ret.scheduleMemtable(mem, ret.segments.get(0));
 				} catch (Exception e) {
-					// path.delete();
-					System.out.println(e.getMessage());
+					path.delete();
+					ret.log.error("Error opening " + path, e);
 				}
 			}
 		}
@@ -101,19 +112,19 @@ public class SortedLevelFile {
 
 	private volatile List<MemtableSegment> segments = new ArrayList<>();
 
-	FileLock fLock;
+	private FileLock fLock;
 
-	ReadWriteLock lock = new ReentrantReadWriteLock();
+	private ReadWriteLock lock = new ReentrantReadWriteLock();
 
-	Levels levels = new Levels();
+	private Levels levels = new Levels();
 
 	private LevelOptions opts;
 
-	List<LogFile> writing = new ArrayList<>();
+	private List<LogFile> writing = new ArrayList<>();
 
 	private File cwd;
 
-	volatile boolean closed;
+	private volatile boolean closed;
 
 	private Compactor compactor;
 
@@ -123,15 +134,28 @@ public class SortedLevelFile {
 
 	private volatile Manifest manifest;
 
-	AtomicInteger cont = new AtomicInteger(0);
-
 	AtomicInteger currentWriting = new AtomicInteger(0);
 
+	private Timer memtabletimer = new Timer(true);
+
 	private SortedLevelFile(final File cwd, LevelOptions opt) throws Exception {
+
+		Runtime.getRuntime().addShutdownHook(new Thread() {
+			@Override
+			public void run() {
+				try {
+					close();
+				} catch (Exception e) {
+					e.printStackTrace();
+				}
+			}
+		});
+
 		this.opts = opt;
 		this.cwd = cwd;
 
 		this.manifest = new Manifest(cwd, this);
+
 		Collection<LevelFile> levelFiles = manifest.getFiles();
 
 		if (opts == null) {
@@ -159,7 +183,7 @@ public class SortedLevelFile {
 
 		for (int i = 0; i < opts.maxMemtableSegments; i++) {
 			MemtableSegment seg = new MemtableSegment(opts.maxSegmentWriters);
-			seg.setCurrent(new Memtable(cwd.getPath(), opts));
+			seg.setCurrent(new Memtable(cwd.getPath(), opts, memtabletimer));
 			this.segments.add(seg);
 
 		}
@@ -186,38 +210,53 @@ public class SortedLevelFile {
 	}
 
 	public synchronized void close() throws Exception {
-		for (MemtableSegment memtableSegment : segments) {
-			memtableSegment.getExec().shutdown();
-			memtableSegment.getExec().awaitTermination(Long.MAX_VALUE,
-					TimeUnit.DAYS);
-		}
-
+		log.info("Closing SLF at " + cwd);
 		closed = true;
 
-		compactor.waitFinished();
-
+		log.info("Writing current memtable segments.");
 		for (MemtableSegment memtableSegment : segments) {
 			writeMemtable(true, memtableSegment);
 		}
 
+		log.info("Notifying level0.");
 		Level level0 = getLevel(0);
 		if (level0 != null)
 			synchronized (level0) {
 				level0.notifyAll();
 			}
 
+		log.info("Shutting down level0 writer");
+		level0Exec.shutdown();
+		level0Exec.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS);
+
+		log.info("Shutting down memtable segments");
+		for (MemtableSegment memtableSegment : segments) {
+			memtableSegment.getExec().shutdown();
+			memtableSegment.getExec().awaitTermination(Long.MAX_VALUE,
+					TimeUnit.DAYS);
+		}
+
+		log.info("Waiting for compactor");
+		compactor.waitFinished();
+
 		// flushWriting();
+		log.info("Closing level files.");
 		for (Level list : levels) {
 			for (LevelFile levelFile : list) {
 				levelFile.close();
 			}
 		}
-
+		log.info("Clearing levels map.");
 		levels.clear();
 
+		log.info("Closing manifest.");
 		manifest.close();
 
+		log.info("Releasing lock.");
 		fLock.release();
+
+		memtabletimer.cancel();
+		log.info("Closed " + cwd);
 	}
 
 	public void compact() throws Exception {
@@ -240,7 +279,9 @@ public class SortedLevelFile {
 	}
 
 	public boolean contains(byte[] k) throws Exception {
-		
+		if (closed)
+			throw new Exception("File closed");
+
 		for (MemtableSegment memtableSegment : segments) {
 			synchronized (memtableSegment) {
 				if (memtableSegment.getCurrent().contains(k))
@@ -398,10 +439,14 @@ public class SortedLevelFile {
 	}
 
 	public void put(byte[] k, byte[] val) throws Exception {
+		if (k.length == 0)
+			throw new Exception("Key Length is 0.");
+
 		if (closed)
 			throw new Exception("File closed");
 
-		int index = (int) (cont.getAndIncrement() % segments.size());
+		int index = (int) ((k.length * (k[0] + k[k.length - 1])) % segments
+				.size());
 		MemtableSegment seg = segments.get(index);
 		synchronized (seg) {
 			if (seg.getCurrent().logSize() >= opts.memTableSize)
@@ -472,9 +517,9 @@ public class SortedLevelFile {
 			throws Exception {
 		CompactWriter writer = new CompactWriter(level0, level0Exec);
 
-		for (Entry<byte[], byte[]> e : data.entrySet()) {
+		for (Entry<byte[], byte[]> e : data.entrySet())
 			writer.add(e.getKey(), e.getValue());
-		}
+
 		writer.persist();
 	}
 
@@ -484,7 +529,7 @@ public class SortedLevelFile {
 			final Memtable current = seg.getCurrent();
 			if (current.isEmpty())
 				return;
-			seg.setCurrent(new Memtable(cwd.getPath(), opts));
+			seg.setCurrent(new Memtable(cwd.getPath(), opts, memtabletimer));
 
 			awaitFutures(seg);
 

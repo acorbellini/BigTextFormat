@@ -8,42 +8,34 @@ import edu.bigtextformat.record.DataType;
 import edu.jlime.util.ByteBuffer;
 
 public class Header implements DataType<Header> {
-	public static Header createNew(Block block) throws Exception {
-		return new Header(block, block.getFile().length(),
-				new HashMap<String, byte[]>());
+	Map<String, byte[]> data = null;
+
+	public Header(Map<String, byte[]> map) {
+		this.data = map;
 	}
-	public static Header emptyHeader() {
-		return new Header(null);
+
+	public Header() {
+		this(new HashMap<String, byte[]>());
 	}
+
 	public static Header open(Block headerBlock) throws Exception {
+		Header ret = null;
 		if (headerBlock.payload().length > 0)
-			return read(headerBlock);
+			ret = read(headerBlock);
 		else {
-			Header createNew = createNew(headerBlock);
-			createNew.updateBlock();
-			return createNew;
+			ret = new Header();
 		}
+		ret.setSize(headerBlock.size());
+		return ret;
 	}
 
 	public static Header read(Block block) throws Exception {
-		return new Header(block).fromByteArray(block.payload());
+		return new Header().fromByteArray(block.payload());
 	}
-
-	Block b;
 
 	private long fsize = 0;
 
-	Map<String, byte[]> data = new HashMap<String, byte[]>();
-
-	private Header(Block b2) {
-		this.b = b2;
-	}
-
-	private Header(Block b, long fsize, Map<String, byte[]> data) {
-		this.b = b;
-		this.fsize = fsize;
-		this.data = data;
-	}
+	private long size;
 
 	@Override
 	public Header fromByteArray(byte[] data) throws Exception {
@@ -57,28 +49,23 @@ public class Header implements DataType<Header> {
 		return data.get(k);
 	}
 
-	public long getFsize() {
-		return fsize;
-	}
-
 	public String getString(String string) {
 		return new String(get(string));
 	}
 
-	public void putData(String k, byte[] val) throws Exception {
-		this.data.put(k, val);
-		updateBlock();
-	}
+	// public void putData(String k, byte[] val) throws Exception {
+	// this.data.put(k, val);
+	// }
 
-	public void setFileSize(long length) throws Exception {
-		this.fsize = length;
-		updateBlock();
-	}
+	//
+	// public void setFileSize(long length) throws Exception {
+	// this.fsize = length;
+	// // updateBlock();
+	// }
 
-	public long size() {
-		return b != null ? b.size() : 0;
-
-	}
+	// public long size() {
+	// return b != null ? b.size() : 0;
+	// }
 
 	@Override
 	public byte[] toByteArray() throws Exception {
@@ -88,7 +75,15 @@ public class Header implements DataType<Header> {
 		return buff.build();
 	}
 
-	private void updateBlock() throws Exception {
-		this.b.setPayload(toByteArray());
+	public void setSize(long size) {
+		this.size = size;
 	}
+
+	public long getSize() {
+		return size;
+	}
+
+	// private void updateBlock() throws Exception {
+	// this.b.setPayload(toByteArray());
+	// }
 }
