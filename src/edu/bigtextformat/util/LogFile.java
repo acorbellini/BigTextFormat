@@ -43,7 +43,7 @@ public class LogFile
 		mode = APPEND;
 	}
 
-	public void close() throws IOException {
+	public synchronized void close() throws IOException {
 		if (file != null)
 			file.close();
 		file = null;
@@ -66,8 +66,9 @@ public class LogFile
 			Files.delete(Paths.get(p));
 	}
 
-	public void flush() throws IOException {
-		file.sync();
+	public synchronized void flush() throws IOException {
+		if (file != null)
+			file.sync();
 	}
 
 	public byte[] get(byte[] k) throws Exception {
