@@ -7,6 +7,7 @@ import java.nio.channels.FileLock;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
@@ -445,8 +446,8 @@ public class SortedLevelFile {
 		if (closed)
 			throw new Exception("File closed");
 
-		int index = (int) ((k.length * (k[0] + k[k.length - 1])) % segments
-				.size());
+		int index = (int) Math.abs((Arrays.hashCode(k) * 2147483647)
+				% segments.size());
 		MemtableSegment seg = segments.get(index);
 		synchronized (seg) {
 			if (seg.getCurrent().logSize() >= opts.memTableSize)

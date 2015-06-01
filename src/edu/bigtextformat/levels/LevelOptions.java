@@ -14,7 +14,7 @@ public class LevelOptions implements DataType<LevelOptions> {
 
 	// Memtable Options
 	public int memTableSize = 512 * 1024; // 512k
-	public int maxMemtableSegments = 2;
+	public int maxMemtableSegments = 4;
 	public int maxLevel0WriterThreads = 4;
 
 	// Block and File Size
