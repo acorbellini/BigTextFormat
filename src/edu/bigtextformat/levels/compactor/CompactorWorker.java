@@ -43,7 +43,7 @@ public class CompactorWorker implements Runnable {
 			if ((l.level() == 0 && checkLevel0Conditions(l))
 					|| (l.level() > 0 && checkLevelConditions(l))) {
 				if (level == 0) {
-					from = LevelRepairer.getConsecutiveIntersection(l, 0,
+					from = LevelRepairer.getConsecutiveIntersection(l.files(), 0,
 							file.getOpts().maxMergeElements,
 							file.getOpts().format);
 				} else

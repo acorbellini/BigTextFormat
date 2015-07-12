@@ -46,14 +46,14 @@ public class Level implements Iterable<LevelFile> {
 	List<LevelFile> files = new ArrayList<>();
 	private SortedLevelFile file;
 
-	private int level;
+	private volatile int level;
 	private ReadWriteLock lock = new ReentrantReadWriteLock();
 
 	private AtomicInteger count = new AtomicInteger(0);
 	//
-	private byte[] minKey;
+	private volatile byte[] minKey;
 
-	private byte[] maxKey;
+	private volatile byte[] maxKey;
 
 	public Level(SortedLevelFile sortedLevelFile, int level) {
 		this.file = sortedLevelFile;
@@ -210,18 +210,6 @@ public class Level implements Iterable<LevelFile> {
 		} finally {
 			lock.readLock().unlock();
 		}
-	}
-
-	public LevelFile get(int i) {
-		lock.readLock().lock();
-		try {
-			if (i >= files.size())
-				return null;
-			return files.get(i);
-		} finally {
-			lock.readLock().unlock();
-		}
-
 	}
 
 	public File getCwd() {

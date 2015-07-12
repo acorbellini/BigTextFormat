@@ -133,7 +133,7 @@ public class LevelFile {
 
 	private TimerTask closeTask;
 
-	private SortedLevelFile db;
+	public SortedLevelFile db;
 
 	private LevelFile(File f, int level, int cont, byte[] minKey,
 			byte[] maxKey, SortedLevelFile db) {
@@ -641,9 +641,13 @@ public class LevelFile {
 		}
 	}
 
-	public boolean intersectsWith(byte[] minKey2, byte[] maxKey2)
+	public boolean intersectsWith(byte[] minKey, byte[] maxKey)
 			throws Exception {
-		return opts.format.compare(getMinKey(), maxKey2) <= 0
-				&& getOpts().format.compare(getMaxKey(), minKey2) >= 0;
+		return opts.format.compare(getMinKey(), maxKey) <= 0
+				&& getOpts().format.compare(getMaxKey(), minKey) >= 0;
+	}
+
+	public SortedLevelFile getDb() {
+		return db;
 	}
 }

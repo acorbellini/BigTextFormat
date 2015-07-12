@@ -39,7 +39,7 @@ public class LevelOptions implements DataType<LevelOptions> {
 	public int recoveryWriters = 10;
 	public int recoveryThreads = 10;
 
-	public int recoveryMaxIntersect = 1000;
+	public int recoveryMaxIntersect = 100;
 
 	public boolean syncmem = false;
 

@@ -70,7 +70,7 @@ public class LevelRepairer {
 						if (current.contains(levelFile))
 							continue;
 						final Set<LevelFile> intersection = getConsecutiveIntersection(
-								to, i, file.getOpts().recoveryMaxIntersect,
+								files, i, file.getOpts().recoveryMaxIntersect,
 								file.getOpts().format);
 
 						if (intersection.size() > 1) {
@@ -108,8 +108,8 @@ public class LevelRepairer {
 		execRec.shutdown();
 	}
 
-	public static Set<LevelFile> getConsecutiveIntersection(Level l, int init,
-			int max, BlockFormat format) throws Exception {
+	public static Set<LevelFile> getConsecutiveIntersection(List<LevelFile> l,
+			int init, int max, BlockFormat format) throws Exception {
 		LevelFile first = l.get(init);
 		final Set<LevelFile> intersection = new HashSet<LevelFile>();
 		intersection.add(first);

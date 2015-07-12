@@ -24,7 +24,8 @@ public class LevelMerger {
 	private static Logger log = Logger.getLogger(LevelMerger.class);
 
 	public static PairReader getNext(List<PairReader> readers,
-			BlockFormat format, byte[] before) {
+			BlockFormat format, byte[] before, CompactWriter writer)
+			throws Exception {
 		PairReader min = null;
 		Iterator<PairReader> it = readers.iterator();
 		while (it.hasNext()) {
@@ -46,8 +47,14 @@ public class LevelMerger {
 					else if (compare > 0)
 						min = pairReader;
 				}
-			} else
+			} else {
+				if (writer != null) {
+					writer.persist();
+					LevelFile f = pairReader.getReader().getFile();
+					f.getDb().getLevel(f.getLevel()).delete(f);
+				}
 				it.remove();
+			}
 		}
 
 		return min;
@@ -71,6 +78,12 @@ public class LevelMerger {
 		for (LevelFile from : list) {
 			intersect.addAll(to.intersect(from.getMinKey(), from.getMaxKey()));
 		}
+
+		if (intersect.size() > current.getOpts().intersectSplit)
+			log.warn("Intersecting " + intersect.size()
+					+ ", which is more than max intersect size "
+					+ current.getOpts().intersectSplit);
+
 		Iterator<LevelFile> itIntersection = intersect.iterator();
 		while (itIntersection.hasNext()) {
 			LevelFile levelFile = (LevelFile) itIntersection.next();
@@ -127,7 +140,7 @@ public class LevelMerger {
 			}
 		}
 
-		PairReader fromReader = getNext(fromReaders, format, null);
+		PairReader fromReader = getNext(fromReaders, format, null, null);
 		for (LevelFileReader levelFileReader : intersectionReaders) {
 			while (levelFileReader.hasNext()) {
 				DataBlock dataBlock = levelFileReader.next();
@@ -156,7 +169,7 @@ public class LevelMerger {
 									writer.add(key, fromReader.getValue());
 									fromReader.advance();
 									fromReader = getNext(fromReaders, format,
-											key);
+											key, writer);
 
 								}
 							}
@@ -166,29 +179,33 @@ public class LevelMerger {
 					}
 				}
 			}
+
+			writer.persist();
+			LevelFile f = levelFileReader.getFile();
+			f.getDb().getLevel(f.getLevel()).delete(f);
 		}
 
 		while (fromReader != null) {
 			byte[] key = fromReader.getKey();
 			writer.add(key, fromReader.getValue());
 			fromReader.advance();
-			fromReader = getNext(fromReaders, format, key);
+			fromReader = getNext(fromReaders, format, key, writer);
 		}
 
 		writer.persist();
 
-		for (LevelFile levelFile : intersectSorted)
-			to.delete(levelFile);
+		// for (LevelFile levelFile : intersectSorted)
+		// to.delete(levelFile);
 
-		for (LevelFile from : list)
-			current.delete(from);
+		// for (LevelFile from : list)
+		// current.delete(from);
 
 	}
 
-	public static void shrink(Level level, Set<LevelFile> level0Merge,
+	public static void shrink(Level level, Set<LevelFile> intersection,
 			ExecutorService execCR) throws Exception {
 		List<PairReader> readers = new ArrayList<>();
-		for (LevelFile levelFile : level0Merge) {
+		for (LevelFile levelFile : intersection) {
 			try {
 				PairReader pairReader;
 				pairReader = levelFile.getPairReader();
@@ -197,24 +214,31 @@ public class LevelMerger {
 				e.printStackTrace();
 			}
 		}
-
+		// log.info("Shrinking:");
+		// for (LevelFile levelFile : level0Merge) {
+		// log.info("Min: "
+		// + levelFile.getOpts().format.print(levelFile.getMinKey())
+		// + "Max: "
+		// + levelFile.getOpts().format.print(levelFile.getMaxKey()));
+		// }
 		try {
 			CompactWriter writer = new CompactWriter(level, execCR);
-			PairReader min = getNext(readers, level.getOpts().format, null);
+			PairReader min = getNext(readers, level.getOpts().format, null,
+					null);
 			while (min != null && min.getKey() != null) {
 				byte[] key = min.getKey();
 				writer.add(key, min.getValue());
 				min.advance();
-				min = getNext(readers, level.getOpts().format, key);
+				min = getNext(readers, level.getOpts().format, key, writer);
 			}
 			writer.persist();
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
 
-		for (LevelFile levelFile : level0Merge) {
-			level.delete(levelFile);
-		}
+		// for (LevelFile levelFile : level0Merge) {
+		// level.delete(levelFile);
+		// }
 	}
 
 	public static void sortByKey(List<LevelFile> intersectSorted,

@@ -55,7 +55,8 @@ public class SortedLevelFile {
 
 	public static SortedLevelFile open(String dir, final LevelOptions opts)
 			throws Exception {
-
+		Logger log = Logger.getLogger(SortedLevelFile.class);
+		log.info("Opening " + dir + " database.");
 		SortedLevelFile ret = null;
 		File fDir = new File(dir);
 		if (!fDir.exists()) {
@@ -211,6 +212,8 @@ public class SortedLevelFile {
 	}
 
 	public synchronized void close() throws Exception {
+		if (closed)
+			return;
 		log.info("Closing SLF at " + cwd);
 		closed = true;
 
@@ -306,19 +309,18 @@ public class SortedLevelFile {
 
 	public byte[] get(byte[] k) throws Exception {
 		byte[] ret = null;
-		for (MemtableSegment memtableSegment : segments) {
-			synchronized (memtableSegment) {
-				byte[] inMemtable = memtableSegment.getCurrent().get(k);
+		int index = hashKey(k);
+		MemtableSegment memtableSegment = segments.get(index);
+		synchronized (memtableSegment) {
+			byte[] inMemtable = memtableSegment.getCurrent().get(k);
+			if (inMemtable != null)
+				return inMemtable;
+
+			Memtable old = memtableSegment.getOld();
+			if (old != null) {
+				inMemtable = old.get(k);
 				if (inMemtable != null)
 					return inMemtable;
-
-				Memtable old = memtableSegment.getOld();
-				if (old != null) {
-					inMemtable = old.get(k);
-					if (inMemtable != null)
-						return inMemtable;
-				}
-
 			}
 		}
 
@@ -329,6 +331,11 @@ public class SortedLevelFile {
 				return ret;
 		}
 		return ret;
+	}
+
+	private int hashKey(byte[] k) {
+		return (int) Math.abs((Arrays.hashCode(k) * 2147483647)
+				% segments.size());
 	}
 
 	public Compactor getCompactor() {
@@ -446,8 +453,7 @@ public class SortedLevelFile {
 		if (closed)
 			throw new Exception("File closed");
 
-		int index = (int) Math.abs((Arrays.hashCode(k) * 2147483647)
-				% segments.size());
+		int index = hashKey(k);
 		MemtableSegment seg = segments.get(index);
 		synchronized (seg) {
 			if (seg.getCurrent().logSize() >= opts.memTableSize)
